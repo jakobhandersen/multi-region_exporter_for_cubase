@@ -1,0 +1,24 @@
+On Mac:
+- export runnable jar
+- make into .app by using Pyxis Jar Bundler (remember to use private JRE)
+- make changes in info.plist file (in show package content):
+	- delete item "-splash:[someFile]" in JVMOptions (since splash screen doesn't seem to work properly)
+	- add item "-XstartOnFirstThread" to JVMOptions (necessary argument for SWT on Mac)
+- replace the "jre" folder in "Plugins" (copied by the Pyxis application) with a manual copy of the JRE  (since executables are not executable when copied by the Jar Bundler)
+- copy folders "documentation", "waveform" and "sox" into the "Contents" folder
+	- "documentation" should contain "documentation.pdf"
+	- "sox" should contain sox and soxi (for mac)
+	- "waveform" should be empty
+
+
+On Windows
+- export runnable jar
+- make into .exe by using Launch4j (remember to use private JRE)
+- copy folder "documentation" into same folder as .exe
+	- "documentation" should contain "documentation.pdf"
+- copy "resources" folder into same folder as .exe
+	- "resources" should contain folders "waveform", "sox" and a jre folder specified in Launch4j
+		- "sox" should contain sox and soxi (for windows)
+		- "waveform" should be empty
+		- the jre folder should contain the private JRE (can be copied from "Java" folder in "program files")
+ 
