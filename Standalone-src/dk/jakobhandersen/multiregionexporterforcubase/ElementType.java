@@ -1,5 +1,5 @@
 //    Multi-region Exporter - for Cubase
-//    Copyright (C) 2017 Jakob Hougaard Andsersen
+//    By Jakob Hougaard Andersen
 //
 //    This program is free software: you can redistribute it and/or modify
 //    it under the terms of the GNU General Public License as published by
@@ -20,4 +20,4 @@ package dk.jakobhandersen.multiregionexporterforcubase;
  * @author Jakob Hougaard Andersen
  *
  */
-public  enum ElementType{None,MAudioEvent,PAudioClip,MAudioPartEvent,MAudioPart,MRangeMarkerEvent,PArrangeSetup};
+public  enum ElementType{None,MAudioEvent,PAudioClip,MAudioPartEvent,MAudioPart,MRangeMarkerEvent,PArrangeSetup,MAudioTrackEvent,MMarkerTrackEvent};

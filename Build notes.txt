@@ -1,11 +1,6 @@
 On Mac:
 - export runnable jar
-- make into .app by using Pyxis Jar Bundler (remember to use private JRE)
-- make changes in info.plist file (in show package content):
-	- delete item "-splash:[someFile]" in JVMOptions (since splash screen doesn't seem to work properly)
-	- add item "-XstartOnFirstThread" to JVMOptions (necessary argument for SWT on Mac)
-	- change the value of key CFBundleAllowMixedLocalizations to false (otherwise menu items are grayed out on non-english systems)
-- replace the "jre" folder in "Plugins" (copied by the Pyxis application) with a manual copy of the JRE  (since all executables are not executable when copied by the Jar Bundler)
+- make into .app by using jar2app (downloadable from here: https://github.com/Jorl17/jar2app). Build arguments are saved in "jar2app build.txt" (change paths to your computer)
 - copy folders "sox" and "ffmpeg" into the "Contents" folder
 	- "sox" should contain sox and soxi (for mac)
 	- "ffmpeg" should contain ffmpeg (for mac)

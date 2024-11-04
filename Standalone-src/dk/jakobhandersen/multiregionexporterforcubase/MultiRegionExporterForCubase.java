@@ -1,5 +1,5 @@
 //    Multi-region Exporter - for Cubase
-//    Copyright (C) 2017 Jakob Hougaard Andsersen
+//    By Jakob Hougaard Andersen
 //
 //    This program is free software: you can redistribute it and/or modify
 //    it under the terms of the GNU General Public License as published by
@@ -1314,7 +1314,7 @@ public class MultiRegionExporterForCubase implements UserInterface
 		
 		
 		waveformLabel = new Label(shell, SWT.NONE);
-		waveformLabel.setToolTipText("Waveform and region preview. \r\nNote that the visual waveform and region markers are not 100% accurate\r\n- they are only approximations. \r\nThe actual export will be precise and, where possible, lossless.");
+		waveformLabel.setToolTipText("Waveform and region preview. \r\nNote that the visual waveform and region markers are not totally accurate\r\n- they are only approximations.\r\nSo don't worry if the waveform looks strange or if the regions don't quite match.\r\nThe actual export will be precise and, where possible, lossless.");
 		waveformLabel.addPaintListener(new PaintListener() 
 		{
 			public void paintControl(PaintEvent e) 

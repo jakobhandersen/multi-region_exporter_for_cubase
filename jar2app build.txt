@@ -1,0 +1,4 @@
+Below is the command with arguments that I used for jar2app to build App for Mac.
+Remember to change paths to fit your system.
+
+jar2app /Users/jakob/Dropbox/MultiRegionExporterForCubase/v_1_0_0_3/BuildAssembly/Mac/MrEfC.jar -r /Library/Java/JavaVirtualMachines/jdk1.8.0_181.jdk  -v 1.0.0.3 -s 1.0.0.3 -i /Users/jakob/Dropbox/MultiRegionExporterForCubase/v_1_0_0_3/Source/Logo/MyIcon.icns  -b dk.jakobhandersen.multiregionexporterforcubase -n "Multi-region Exporter for Cubase" -d "Multi-region Exporter for Cubase" -j -XstartOnFirstThread -m dk.jakobhandersen.multiregionexporterforcubase.MultiRegionExporterForCubase

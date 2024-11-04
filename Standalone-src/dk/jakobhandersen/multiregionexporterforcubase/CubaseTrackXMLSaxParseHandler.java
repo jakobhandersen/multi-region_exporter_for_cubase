@@ -1,5 +1,5 @@
 //    Multi-region Exporter - for Cubase
-//    Copyright (C) 2017 Jakob Hougaard Andsersen
+//    By Jakob Hougaard Andersen
 //
 //    This program is free software: you can redistribute it and/or modify
 //    it under the terms of the GNU General Public License as published by
@@ -31,6 +31,7 @@ import org.xml.sax.helpers.DefaultHandler;
  * Parses the Cubase track XML file and creates AudioBite objects.
  * 
  * Note: I have no previous experience in working with SAX parsing, so this class might not be very elegant.
+ * A future task will be to either review and refine this parser or to write another non-SAX parser.
  * 
  * Inspiration: http://www.journaldev.com/1198/java-sax-parser-example-tutorial-to-parse-xml-to-list-of-objects
  * Inspiration: http://docs.oracle.com/javase/tutorial/jaxp/sax/parsing.html
@@ -46,7 +47,19 @@ public class CubaseTrackXMLSaxParseHandler extends DefaultHandler
 	private List<AudioBite> audioBites = null;
 	
 	/**
-	 * Describes which (relevant) XML element type (ElementType) we are currently in.
+	 * Describes which track type (ElementType) we are currently within.
+	 * Used for filtering out strange MAudioEvents that exist outside track elements (when using audio parts).
+	 */
+	private ElementType currentlyWithinTrack = ElementType.None;
+	
+	/**
+	 * Describes which 'descendant level' in relation to the current track element we are on.
+	 * Is used to determine when we are exiting the element. 
+	 */
+	private int subTrackNodeLevel = 0;
+	
+	/**
+	 * Describes which (content-relevant) XML element type (ElementType) we are currently in.
 	 */
 	private ElementType currentlyParsingElement = ElementType.None;
 	
@@ -172,6 +185,20 @@ public class CubaseTrackXMLSaxParseHandler extends DefaultHandler
 				domainMemberSubMemberLevel -= 1;
 			}
 		}
+		
+		if (currentlyWithinTrack != ElementType.None)
+		{
+			if (subTrackNodeLevel == 0)
+			{
+				//Exiting track
+				Debug.log("Exiting track "+ currentlyWithinTrack.toString());
+				currentlyWithinTrack = ElementType.None;
+			}
+			else
+			{
+				subTrackNodeLevel -= 1;
+			}
+		}
 	}
 	
 	/**
@@ -199,12 +226,45 @@ public class CubaseTrackXMLSaxParseHandler extends DefaultHandler
 		audioClipIdNameMap = new HashMap<String,String>(0);
 		currentlySettingUpBite = null;
 		sampleRateSet = false;
+		currentlyWithinTrack = ElementType.None;
+		subTrackNodeLevel = 0;
+		currentlyParsingElement = ElementType.None;
+		subElementNodeLevel = 0;
+		numRenamedAudioBites = 0;
+		domainMemberSubMemberLevel = 0;
 	}
 	
 	
 	@Override
 	public void startElement(String uri, String localName, String qName, Attributes attributes) throws SAXException 
 	{
+		//Check for track
+		if (currentlyWithinTrack == ElementType.None)
+		{
+			if (qName.equalsIgnoreCase("obj"))
+			{
+				String classAttr = attributes.getValue("class");
+				if (classAttr != null)
+				{
+					if (classAttr.equalsIgnoreCase("MAudioTrackEvent"))
+					{
+						currentlyWithinTrack = ElementType.MAudioTrackEvent;
+						Debug.log("Entering track " + currentlyWithinTrack.toString());
+					}
+					else if (classAttr.equalsIgnoreCase("MMarkerTrackEvent"))
+					{
+						currentlyWithinTrack = ElementType.MMarkerTrackEvent;
+						Debug.log("Entering track " + currentlyWithinTrack.toString());
+					}
+				}
+			}
+		}
+		else
+		{
+			subTrackNodeLevel += 1;
+		}
+		
+		//If we are currently within a content relevant element
 		if (currentlyParsingElement != ElementType.None)
 		{
 			subElementNodeLevel += 1;
@@ -426,6 +486,7 @@ public class CubaseTrackXMLSaxParseHandler extends DefaultHandler
 				
 		}
 		
+		//If we are not currently parsing content relevant element – check if we are now entering one
 		if (currentlyParsingElement == ElementType.None)
 		{
 			if (qName.equalsIgnoreCase("obj"))
@@ -435,18 +496,39 @@ public class CubaseTrackXMLSaxParseHandler extends DefaultHandler
 				{
 					if (classAttr.equalsIgnoreCase("MAudioEvent"))
 					{
-						currentlySettingUpBite = new AudioBite();
-						currentlyParsingElement = ElementType.MAudioEvent;
+						if (currentlyWithinTrack != ElementType.None)
+						{
+							currentlySettingUpBite = new AudioBite();
+							currentlyParsingElement = ElementType.MAudioEvent;
+						}
+						else
+						{
+							Debug.log("Discarding MAudioEvent outside track");
+						}
 					}
 					else if (classAttr.equalsIgnoreCase("MAudioPartEvent"))
 					{
-						currentlySettingUpBite = new AudioBite();
-						currentlyParsingElement = ElementType.MAudioPartEvent;
+						if (currentlyWithinTrack != ElementType.None)
+						{
+							currentlySettingUpBite = new AudioBite();
+							currentlyParsingElement = ElementType.MAudioPartEvent;
+						}
+						else
+						{
+							Debug.log("Discarding MAudioPartEvent outside track");
+						}
 					}
 					else if (classAttr.equalsIgnoreCase("MRangeMarkerEvent"))
 					{
-						currentlySettingUpBite = new AudioBite();
-						currentlyParsingElement = ElementType.MRangeMarkerEvent;
+						if (currentlyWithinTrack != ElementType.None)
+						{
+							currentlySettingUpBite = new AudioBite();
+							currentlyParsingElement = ElementType.MRangeMarkerEvent;
+						}
+						else
+						{
+							Debug.log("Discarding MRangeMarkerEvent outside track");
+						}
 					}
 					else if (classAttr.equalsIgnoreCase("PArrangeSetup"))
 					{
@@ -491,7 +573,7 @@ public class CubaseTrackXMLSaxParseHandler extends DefaultHandler
 		
 		//Special cases.
 		//MAudioPart is contained in MAudioPartEvent and contains the part's name
-		//PAudioClip is contained in MAudioEvent and the clip's name becomes the bite's name if it has no desciption.
+		//PAudioClip is contained in MAudioEvent and the clip's name becomes the bite's name if it has no description.
 		else if (currentlyParsingElement == ElementType.MAudioPartEvent || currentlyParsingElement == ElementType.MAudioEvent)
 		{
 			if (subElementNodeLevel == 1)
@@ -522,6 +604,7 @@ public class CubaseTrackXMLSaxParseHandler extends DefaultHandler
 				}
 			}
 		}
+		
 		
 	}
 	

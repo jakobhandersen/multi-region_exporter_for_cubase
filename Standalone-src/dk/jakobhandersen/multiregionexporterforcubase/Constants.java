@@ -1,5 +1,5 @@
 //    Multi-region Exporter - for Cubase
-//    Copyright (C) 2017 Jakob Hougaard Andsersen
+//    By Jakob Hougaard Andersen
 //
 //    This program is free software: you can redistribute it and/or modify
 //    it under the terms of the GNU General Public License as published by
@@ -32,10 +32,10 @@ public class Constants
 	/**
 	 * String representation of this version of the program
 	 */
-	public static final String versionString = "1.0.0.2";
+	public static final String versionString = "1.0.0.3";
 	
 	/**
 	 * String representation of the build date of this version
 	 */
-	public static final String buildDateString = "2017-10-08";
+	public static final String buildDateString = "2018-07-20";
 }

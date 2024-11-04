@@ -1,5 +1,5 @@
 //    Multi-region Exporter - for Cubase
-//    Copyright (C) 2017 Jakob Hougaard Andsersen
+//    By Jakob Hougaard Andersen
 //
 //    This program is free software: you can redistribute it and/or modify
 //    it under the terms of the GNU General Public License as published by
@@ -490,6 +490,7 @@ public class ExporterEngine
 	public void setWaveformHeight(int height)
 	{
 		waveformHeight = height;
+		Debug.log("Waveform height set to "+height);
 	}
 	
 	
@@ -500,6 +501,7 @@ public class ExporterEngine
 	public void setWaveformWidth(int width)
 	{
 		waveformWidth = width;
+		Debug.log("Waveform width set to "+width);
 	}
 	
 	/**

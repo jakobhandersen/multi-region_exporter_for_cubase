@@ -1,5 +1,5 @@
 //    Multi-region Exporter - for Cubase
-//    Copyright (C) 2017 Jakob Hougaard Andsersen
+//    By Jakob Hougaard Andersen
 //
 //    This program is free software: you can redistribute it and/or modify
 //    it under the terms of the GNU General Public License as published by
@@ -134,7 +134,9 @@ public class WaveformGenerator extends Thread
 		
 		cmdAndArgs.add("-filter_complex");
 		
-		cmdAndArgs.add("showwavespic=s="+waveformWidth+"x"+waveformHeight+":split_channels=1:colors=0x000000");
+		//Note that below the scaling is set to square-root in an attempt to make waveform more clear when shown on a low resolution.
+		//This, however, also makes the visual representation dynamics less 'true'.
+		cmdAndArgs.add("showwavespic=split_channels=1:s="+waveformWidth+"x"+waveformHeight+":colors=0x000000:scale=sqrt");
 		
 		cmdAndArgs.add("-frames:v");
 		

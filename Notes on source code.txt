@@ -1,14 +1,15 @@
-Here is the source code for the Multi-region Exporter – for Cubase version 1.0.0.2
+Here is the source code for the Multi-region Exporter – for Cubase version 1.0.0.3
 
 It is written in Java and it uses the SWT toolkit for the GUI. Furthermore, the actual audio splitting is done by the command line application SoX – Sound eXchange (http://sox.sourceforge.net), which is included here in binary form (you might want to download a newer version).
 
-Since the Multi-region Exporter is developed in Eclipse, the source code is structured as Eclipse workspaces – one for Mac and one for PC (Windows). Opening one of the two workspaces ("*workspace" folders) in Eclipse should work – I used Mars.1 Release (4.5.1).
+Since the Multi-region Exporter is developed in Eclipse, the source code is structured as Eclipse workspaces – one for Mac and one for PC (Windows). Opening one of the two workspaces ("*workspace" folders) in Eclipse should work.
 
 The actual source code is shared between the Mac and PC workspaces as a linked folder ("Standalone-src"). The same goes for the folder "Standalone-assets". 
 I had all the folders in a Dropbox folder in order to sync between the two platforms.  The reason I worked with two separate workspaces is that the SWT library (and other resources) are different on the two platforms. It might not be the most elegant solution, but it worked for me.
 
 Ideas for improvements / further developments:
-- Ability to convert to other file formats than mp3
 - Support for Logic as well as Cubase? (Does Logic have a similar track export feature or is multi-region exporting natively supported in Logic?)
-- Better Mac vs PC layout solution (now, conditional layout – "if isMac then...")
+- Better Mac vs PC layout solution (now, conditional layout - "if isMac then...")
 - Check multi-threading consistency
+- Ability to convert to other formats than mp3
+- Command line argument support
