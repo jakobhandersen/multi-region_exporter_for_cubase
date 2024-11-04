@@ -335,7 +335,7 @@ public class MultiRegionExporterForCubase implements UserInterface
 		lblVersion.setAlignment(SWT.RIGHT);
 		lblVersion.setFont(SWTResourceManager.getFont("Arial", 11, SWT.NORMAL));
 		lblVersion.setBounds(662, 29, 100, 25);
-		lblVersion.setText("version 1.0.0.0");
+		lblVersion.setText("version 1.0.0.1");
 		if (! isMac)
 		{
 			lblVersion.setFont(SWTResourceManager.getFont("Arial", 10, SWT.NORMAL));

@@ -93,6 +93,19 @@ public class CubaseTrackXMLSaxParseHandler extends DefaultHandler
 	private int numRenamedAudioBites = 0;
 	
 	
+	/**
+	 * The current domain type (time settings on track).
+	 * 0 = musical and 1 = linear
+	 */
+	private int currentDomainType = 0;
+	
+	/**
+	 * Are we currently inside element of type member with name "Domain"?
+	 * This is used for determining track time settings (musical or linear)
+	 */
+	private int domainMemberSubMemberLevel = 0;
+	
+	
 	@Override
 	public void startDocument()
 	{
@@ -146,8 +159,16 @@ public class CubaseTrackXMLSaxParseHandler extends DefaultHandler
 						{
 							if (valueAttr != null && (! valueAttr.isEmpty()))
 							{
-								//Start position is defined in midi ticks
-								currentlySettingUpBite.setStart(midiTicksToSeconds(Double.parseDouble(valueAttr)));
+								if (this.currentDomainType == 0)
+								{
+									//Start position is defined in midi ticks
+									currentlySettingUpBite.setStart(midiTicksToSeconds(Double.parseDouble(valueAttr)));
+								}
+								else if (this.currentDomainType == 1)
+								{
+									//Start position is defined in seconds
+									currentlySettingUpBite.setStart(Double.parseDouble(valueAttr));
+								}
 							}
 						}
 						else if (nameAttr != null && nameAttr.equalsIgnoreCase("Length"))
@@ -209,16 +230,32 @@ public class CubaseTrackXMLSaxParseHandler extends DefaultHandler
 						{
 							if (valueAttr != null && (! valueAttr.isEmpty()))
 							{
-								//Start position is defined in midi ticks
-								currentlySettingUpBite.setStart(midiTicksToSeconds(Double.parseDouble(valueAttr)));
+								if (this.currentDomainType == 0)
+								{
+									//Start position is defined in midi ticks
+									currentlySettingUpBite.setStart(midiTicksToSeconds(Double.parseDouble(valueAttr)));
+								}
+								else if (this.currentDomainType == 1)
+								{
+									//Start position is defined in seconds
+									currentlySettingUpBite.setStart(Double.parseDouble(valueAttr));
+								}
 							}
 						}
 						else if (nameAttr != null && nameAttr.equalsIgnoreCase("Length"))
 						{
 							if (valueAttr != null && (! valueAttr.isEmpty()))
 							{
-								//Length is defined midi ticks
-								currentlySettingUpBite.setLength(midiTicksToSeconds(Double.parseDouble(valueAttr)), TimeFormat.SECONDS);
+								if (this.currentDomainType == 0)
+								{
+									//Length is defined in midi ticks
+									currentlySettingUpBite.setLength(midiTicksToSeconds(Double.parseDouble(valueAttr)), TimeFormat.SECONDS);
+								}
+								else if (this.currentDomainType == 1)
+								{
+									//Length is defined in seconds
+									currentlySettingUpBite.setLength(Double.parseDouble(valueAttr), TimeFormat.SECONDS);
+								}
 							}
 						}
 					}
@@ -250,16 +287,32 @@ public class CubaseTrackXMLSaxParseHandler extends DefaultHandler
 						{
 							if (valueAttr != null && (! valueAttr.isEmpty()))
 							{
-								//Start position is defined in midi ticks
-								currentlySettingUpBite.setStart(midiTicksToSeconds(Double.parseDouble(valueAttr)));
+								if (this.currentDomainType == 0)
+								{
+									//Start position is defined in midi ticks
+									currentlySettingUpBite.setStart(midiTicksToSeconds(Double.parseDouble(valueAttr)));
+								}
+								else if (this.currentDomainType == 1)
+								{
+									//Start position is defined in seconds
+									currentlySettingUpBite.setStart(Double.parseDouble(valueAttr));
+								}
 							}
 						}
 						else if (nameAttr != null && nameAttr.equalsIgnoreCase("Length"))
 						{
 							if (valueAttr != null && (! valueAttr.isEmpty()))
 							{
-								//Length is defined midi ticks
-								currentlySettingUpBite.setLength(midiTicksToSeconds(Double.parseDouble(valueAttr)), TimeFormat.SECONDS);
+								if (this.currentDomainType == 0)
+								{
+									//Length is defined midi ticks
+									currentlySettingUpBite.setLength(midiTicksToSeconds(Double.parseDouble(valueAttr)), TimeFormat.SECONDS);
+								}
+								else if (this.currentDomainType == 1)
+								{
+									//Length is defined in seconds
+									currentlySettingUpBite.setLength(Double.parseDouble(valueAttr), TimeFormat.SECONDS);
+								}
 							}
 						}
 					}
@@ -329,6 +382,33 @@ public class CubaseTrackXMLSaxParseHandler extends DefaultHandler
 					}
 				}
 				
+			}
+			else if (qName.equalsIgnoreCase("member"))
+			{
+				String nameAttr = attributes.getValue("name");
+				if (nameAttr.equalsIgnoreCase("Domain"))
+				{
+					domainMemberSubMemberLevel += 1;
+				}
+				else if (domainMemberSubMemberLevel > 0)
+				{
+					domainMemberSubMemberLevel += 1;
+				}
+				
+			}
+			else if (domainMemberSubMemberLevel == 1 && qName.equalsIgnoreCase("int"))
+			{
+				String nameAttr = attributes.getValue("name");
+				if (nameAttr.equalsIgnoreCase("type"))
+				{
+					String valueAttr = attributes.getValue("value");
+					if (valueAttr != null && (!valueAttr.isEmpty()))
+					{
+						currentDomainType = Integer.parseInt(valueAttr);
+						Debug.log("Domain type set to "+ currentDomainType);
+						
+					}
+				}
 			}
 			if (currentlyParsingElement != ElementType.None)
 			{
@@ -409,6 +489,13 @@ public class CubaseTrackXMLSaxParseHandler extends DefaultHandler
 			else
 			{
 				subElementNodeLevel -= 1;
+			}
+		}
+		else if (domainMemberSubMemberLevel > 0)
+		{
+			if (qName.equalsIgnoreCase("member") )
+			{
+				domainMemberSubMemberLevel -= 1;
 			}
 		}
 	}
