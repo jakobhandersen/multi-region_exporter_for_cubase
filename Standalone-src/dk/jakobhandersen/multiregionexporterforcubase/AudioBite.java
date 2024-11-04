@@ -1,5 +1,5 @@
 //    Multi-region Exporter - for Cubase
-//    Copyright (C) 2016 Jakob Hougaard Andsersen
+//    Copyright (C) 2017 Jakob Hougaard Andsersen
 //
 //    This program is free software: you can redistribute it and/or modify
 //    it under the terms of the GNU General Public License as published by
@@ -80,26 +80,6 @@ public class AudioBite
 	
 	
 	/**
-	 * @param start start time in seconds
-	 */
-	public void setStart(double start)
-	{
-		this.start = start;
-		startSet = true;
-	}
-	
-	/**
-	 * @param length length value
-	 * @param format the TimeFormat of the specified length value
-	 */
-	public void setLength(double length, TimeFormat format)
-	{
-		this.length = length;
-		lengthFormat = format;
-	}
-	
-	
-	/**
 	 * Calculates the end time of this AudioBite on the basis of start, length and lengthFormat
 	 * @param sampleRate the sample rate of the Cubase project (defined in track XML)
 	 */
@@ -129,12 +109,11 @@ public class AudioBite
 	}
 	
 	/**
-	 * @param endTime the functional end time (including trailing time and clamped to length of audio file).
+	 * @return end time in seconds
 	 */
-	public void setFunctionalEnd(double endTime)
+	public double getEnd()
 	{
-		functionalEndSet = true;
-		functionalEnd = endTime;
+		return end;
 	}
 	
 	
@@ -145,6 +124,50 @@ public class AudioBite
 			Debug.log("Error! GetFunctionalEnd() called but functionalEnd is not set");
 		}
 		return functionalEnd;
+	}
+	
+	/**
+	 * @return name of this AudioBite
+	 */
+	public String getName()
+	{
+		return name;
+	}
+	
+	
+	/**
+	 * @return start time in seconds
+	 */
+	public double getStart()
+	{
+		return start;
+	}
+	
+	/**
+	 * @return true if this AudioBite is properly set up
+	 */
+	public boolean isSetup()
+	{
+		return (startSet && endCalculated);
+	}
+	
+	/**
+	 * @param endTime the functional end time (including trailing time and clamped to length of audio file).
+	 */
+	public void setFunctionalEnd(double endTime)
+	{
+		functionalEndSet = true;
+		functionalEnd = endTime;
+	}
+	
+	/**
+	 * @param length length value
+	 * @param format the TimeFormat of the specified length value
+	 */
+	public void setLength(double length, TimeFormat format)
+	{
+		this.length = length;
+		lengthFormat = format;
 	}
 	
 	/**
@@ -171,35 +194,12 @@ public class AudioBite
 	}
 	
 	/**
-	 * @return true if this AudioBite is properly set up
+	 * @param start start time in seconds
 	 */
-	public boolean isSetup()
+	public void setStart(double start)
 	{
-		return (startSet && endCalculated);
-	}
-	
-	/**
-	 * @return start time in seconds
-	 */
-	public double getStart()
-	{
-		return start;
-	}
-	
-	/**
-	 * @return end time in seconds
-	 */
-	public double getEnd()
-	{
-		return end;
-	}
-	
-	/**
-	 * @return name of this AudioBite
-	 */
-	public String getName()
-	{
-		return name;
+		this.start = start;
+		startSet = true;
 	}
 	
 

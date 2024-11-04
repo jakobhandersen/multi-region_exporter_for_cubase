@@ -1,5 +1,5 @@
 //    Multi-region Exporter - for Cubase
-//    Copyright (C) 2016 Jakob Hougaard Andsersen
+//    Copyright (C) 2017 Jakob Hougaard Andsersen
 //
 //    This program is free software: you can redistribute it and/or modify
 //    it under the terms of the GNU General Public License as published by
@@ -18,6 +18,8 @@ package dk.jakobhandersen.multiregionexporterforcubase;
 
 import java.io.File;
 import java.io.FileNotFoundException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
 import java.util.ArrayList;
@@ -26,6 +28,7 @@ import java.util.HashSet;
 
 import javax.xml.parsers.SAXParser;
 import javax.xml.parsers.SAXParserFactory;
+
 
 
 /**
@@ -96,14 +99,15 @@ public class ExporterEngine
 	private String soxiPath = "not set";
 	
 	/**
-	 * Path to the downsampled waveform audio file to be created by sox
+	 * Path to FFMPEG program on the user's computer
 	 */
-	private String waveformFile = "not set";
+	private String ffmpegPath = "not set";
+	
 	
 	/**
 	 * Reference to the currently running AudioSplitter, if any
 	 */
-	private AudioSplitter currentlyRunningSplitter = null;
+	private AudioOutputter currentlyRunningSplitter = null;
 	
 	/**
 	 * Reference to the currently running WaveformGenerator, if any
@@ -121,6 +125,22 @@ public class ExporterEngine
 	private int waveformWidth;
 	
 	/**
+	 * Number of vertical pixels
+	 */
+	private int waveformHeight;
+	
+	/**
+	 * Should the output files be converted to mp3 after splitting?
+	 */
+	private boolean convertToMp3 = false;
+	
+	/**
+	 * If converting to mp3, this is the FFMPEG argument controlling bitrate
+	 */
+	private String convertToMp3FFMPEGBitrateArgument;
+	
+	
+	/**
 	 * List of currently started Processes that need to be destroyed if the application is closed.
 	 */
 	private List<Process> startedProcesses;
@@ -132,6 +152,11 @@ public class ExporterEngine
 	
 	
 	/**
+	 * path to temporary folder
+	 */
+	private String temporaryFolderPath; 
+	
+	/**
 	 * Constructor
 	 */
 	public ExporterEngine(UserInterface userInterface)
@@ -139,19 +164,178 @@ public class ExporterEngine
 		audioBites = new ArrayList<AudioBite>();
 		this.userInterface = userInterface;
 		startedProcesses = new ArrayList<Process>();
+		setPaths();
+	}
+	
+	
+	/**
+	 * Called from the AudioOutputter when this is done
+	 * @param successes the number of successfully created files
+	 * @param total the number of the files that were supposed to be created
+	 * @param caller the AudioSplitter calling this function
+	 */
+	public void audioOutputterDoneCallback(int successes, int total, AudioOutputter caller)
+	{
+		//Is this correct use of 'synchronized'? I am not so experienced with muti-threading..
+		synchronized (this)
+		{
+			if (successes == total)
+			{
+				sendMessageToUser(UserMessageType.SUCCESS, successes + " audio file(s) successfully created in folder: "+outputFolder);
+			}
+			else
+			{
+				sendMessageToUser(UserMessageType.ERROR, "Error(s) accured while creating " + (total - successes) + " audio file(s).");
+				sendMessageToUser(UserMessageType.STATE, successes + " audio files successfully created in folder: "+outputFolder);
+			}
+			if (caller != currentlyRunningSplitter)
+			{
+				Debug.log("Error in AudioSplitterCallback(). caller != currentlyRunningSplitter");
+			}
+			currentlyRunningSplitter = null;
+			sendEventToInterface(EngineEvent.DONE_OUTPUTTING_FILES);
+		}
 	}
 	
 	/**
-	 * Sets currentInputAudioFile to null and sends relevant messages to the UserInterface
+	 * Called from AudioOutputter to inform user about progress of output process
+	 * @param percentage percentage done (0 to 100)
 	 */
-	private void clearCurrentAudioFile()
+	public void audioOutputterPercentageCallback(int percentage)
 	{
-		currentInputAudioFile = null;
-		sendEventToInterface(EngineEvent.CLEAR_AUDIO_FILE);
-		sendEventToInterface(EngineEvent.NOT_READY_FOR_XML);
-		sendEventToInterface(EngineEvent.NOT_READY_FOR_SPLIT);
+		userInterface.setOuputPercentage(percentage);
 	}
 	
+	/**
+	 * Called from AudioOutputter to inform user about progress of output process
+	 * @param text what is the outputter doing now?
+	 */
+	public void audioOutputterProcessTextCallback(String text)
+	{
+		userInterface.setOutputProcessText(text);
+	}
+	
+	/**
+	 * Method to be called when closing the application.
+	 * Interrupts running threads an destroys registered running processes and deletes temporary files
+	 */
+	public void cleanUp()
+	{
+		try
+		{
+			Debug.log("Deleting temporary files folder");
+			if (Utils.deleteDirectory(new File(temporaryFolderPath)))
+			{
+				Debug.log("Successfully deleted all temporary files");
+			}
+			else
+			{
+				Debug.log("Error deleting one or more temporary files");
+			}
+			
+			if (currentlyRunningSplitter != null)
+			{
+				Debug.log("Trying to interrupt currentlyRunningSplitter");
+				currentlyRunningSplitter.interrupt();
+			}
+			
+			if (currentlyRunningWaveformGenerator != null)
+			{
+				Debug.log("Trying to interrupt currentlyRunningWaveformGenerator");
+				currentlyRunningWaveformGenerator.interrupt();
+			}
+			
+			if (currentlyRunningInputAudioFileBuilder != null)
+			{
+				Debug.log("Trying to interrupt currentlyRunningInputAudioFileBuilder");
+				currentlyRunningInputAudioFileBuilder.interrupt();
+			}
+			if (startedProcesses != null)
+			{
+				if (startedProcesses.size() > 0)
+				{
+					Debug.log("Stopping "+ startedProcesses.size() + " process(es)");
+					for (Process p : startedProcesses)
+					{
+						if (p != null)
+						{
+							p.destroyForcibly();
+						}
+					}
+				}
+				else
+				{
+					Debug.log("No started processes to stop");
+				}
+			}
+		}
+		catch (Exception e)
+		{
+			e.printStackTrace();
+		}
+	}
+	
+	/**
+	 * Called from the UserInterface when the user accepts overwriting existing files
+	 */
+	public void createFilesOverwriteAccepted()
+	{
+		createFiles();
+	}
+	
+	/**
+	 * Function called by InputAudioFileBuilder when it is done building the InputAudioFile
+	 * @param caller the InputAudioFileBuilder calling this function
+	 * @param builtFile the built InputAudioFile
+	 */
+	public void inputAudioFileBuilderCallback(InputAudioFileBuilder caller,InputAudioFile builtFile)
+	{
+		//Is this correct use of 'synchronized'? I am not so experienced with muti-threading..
+		synchronized (this)
+		{
+			if (caller != currentlyRunningInputAudioFileBuilder)
+			{
+				Debug.log("Error. Somehow, InputAudioFileBuilderCallback() was called from other caller than currentlyRunningInputAudioFileBuilder");
+				return;
+			}
+			Debug.log("Done building InputAudioFile");
+			currentlyRunningInputAudioFileBuilder = null;
+			if (builtFile == null)
+			{
+				sendEventToInterface(EngineEvent.ERROR_READING_AUDIO_FILE);
+				sendMessageToUser(UserMessageType.ERROR, "Could not read audio file");
+			}
+			else if (builtFile.getIsValid())
+			{
+				currentInputAudioFile = builtFile;
+				userInterface.audioFileRead(currentInputAudioFile);
+				sendEventToInterface(EngineEvent.READY_FOR_XML);
+				sendMessageToUser(UserMessageType.STATE, "Audio file loaded: " + currentInputAudioFile.getFilename());
+				createWaveform();
+			}
+			else
+			{
+				sendEventToInterface(EngineEvent.ERROR_READING_AUDIO_FILE);
+				sendMessageToUser(UserMessageType.ERROR, "Could not read audio file: "+ builtFile.getFilename());
+			}
+		}
+	}
+	
+	/**
+	 * Creates a new InputAudioFileBuilder and makes it create a new InputAudioFile as a representation of the specified audio file.
+	 * The InputAudioFileBuilder later calls InputAudioFileBuilderCallback() when it is done building the InputAudioFile
+	 * @param fileName full path to an audio file
+	 */
+	public void readInputAudioFile(String fileName)
+	{
+		clearCurrentAudioFile();
+		clearAudioBites();
+		currentlyRunningInputAudioFileBuilder = new InputAudioFileBuilder(fileName, soxiPath, this);
+		currentlyRunningInputAudioFileBuilder.start();
+		sendEventToInterface(EngineEvent.READING_AUDIO_FILE);
+		//sendMessageToUser(UserMessageType.STATE, "Loading audio file...");
+	}
+
 	/**
 	 * Reads a Cubase track file (XML) and parses the content.
 	 * Calls processAudioBitesFromParser() if the file was successfully parsed 
@@ -188,6 +372,387 @@ public class ExporterEngine
 			sendMessageToUser(UserMessageType.ERROR, "An audio file must be loaded before track XML can be loaded");
 		}
 	}
+
+	/**
+	 * Method for registering a running Process that needs to be stopped if program is closed before it is done.
+	 * @param p Process to register
+	 */
+	public void registerStartedProcess(Process p)
+	{
+		//Is this correct use of 'synchronized'? I am not so experienced with muti-threading..
+		synchronized(startedProcesses)
+		{
+			if (startedProcesses == null)
+			{
+				startedProcesses = new ArrayList<Process>();
+			}
+			startedProcesses.add(p);
+		}
+	}
+
+	/**
+	 * Sends a message to the user. Printed in the Log window.
+	 * @param type type of message - determines how it is shown.
+	 * @param message the actual message
+	 */
+	public void sendMessageToUser(UserMessageType type, String message)
+	{
+		userInterface.sendMessageToUser(type, message);
+	}
+
+	/**
+	 * Called from UserInterface when convert to mp3 is changed/set
+	 * @param convert
+	 */
+	public void setConvertToMp3(boolean convert)
+	{
+		convertToMp3 = convert;
+		Debug.log("Convert to mp3 set to "+convertToMp3);
+	}
+	
+	/**
+	 * Called from UserInterface when mp3 conversion settings are changed/set
+	 * @param argument bitrate argument used in FFMPEG for mp3 conversion
+	 */
+	public void setMp3ConversionBitrateArgument(String argument)
+	{
+		convertToMp3FFMPEGBitrateArgument = argument;
+		Debug.log("Mp3 conversion bitrate argument set to: "+convertToMp3FFMPEGBitrateArgument);
+	}
+	
+	/**
+	 * Sets the output folder and at the same time starts the output process.
+	 * @param path path to the folder in which the output file should be written
+	 */
+	public void setOutputFolder(String path)
+	{
+		if (currentlyRunningSplitter != null)
+		{
+			sendMessageToUser(UserMessageType.ERROR, "Can't output files now since the exporter is already in the process of outputting");
+			return;
+		}
+		try
+		{
+			File f = new File(path);
+			if((f != null) && f.exists() && f.isDirectory())
+			{
+				outputFolder = path;
+				outputFolderSet = true;
+				boolean[] folderContainsFilesResult = outputFolderContainsFilesAlready();
+				if (folderContainsFilesResult[1])//If it is the special case where input audio file will be overwritten
+				{
+					sendEventToInterface(EngineEvent.INPUT_FILE_TO_BE_OVERWRITTEN);
+					return;//Not allowed, do no further processing
+				}
+				if (folderContainsFilesResult[0])//If other 'normal' files will be overwritten
+				{
+					sendEventToInterface(EngineEvent.FILES_TO_BE_OVERWRITTEN);
+				}
+				else
+				{
+					createFiles();
+				}
+			}
+			else
+			{
+				sendMessageToUser(UserMessageType.ERROR, "Could not find destination folder: "+ path);
+			}
+		}
+		catch (Exception e)
+		{
+			sendMessageToUser(UserMessageType.ERROR, "An error occurred while trying to output files");
+			Debug.log("Exception caught while trying to output files:");
+			e.printStackTrace();
+		}
+	}
+	
+	/**
+	 * Sets the amount of time (seconds) that each AudioBite is extended in length compared to the actual event/region in Cubase
+	 * @param seconds
+	 */
+	public void setTrailingTime(double seconds)
+	{
+		if (trailingTime != seconds)
+		{
+			trailingTime = seconds;
+			if (audioBites.size() >0)
+			{
+				setFunctionalEndAndOutputRangeMarkers();
+			}
+		}
+		Debug.log("Trailing time set to "+seconds+" seconds");
+	}
+	
+	/**
+	 * Sets the height in pixels of waveform view
+	 * @param height
+	 */
+	public void setWaveformHeight(int height)
+	{
+		waveformHeight = height;
+	}
+	
+	
+	/**
+	 * Sets the width in pixels of waveform view
+	 * @param width
+	 */
+	public void setWaveformWidth(int width)
+	{
+		waveformWidth = width;
+	}
+	
+	/**
+	 * Method for unregistering a Process previously registered as running.
+	 * @param p Process to unregister
+	 */
+	public void unregisterStartedProcess(Process p)
+	{
+		//Is this correct use of 'synchronized'? I am not so experienced with muti-threading..
+		synchronized(startedProcesses)
+		{ 
+			if (startedProcesses != null)
+			{
+				startedProcesses.remove(p);
+			}
+		}
+	}
+	
+	
+	/**
+	 * Called from UserInterface if the user wants to use output audio file naming based on event names/descriptions in Cubase (in track XML file)
+	 */
+	public void useCubaseNames()
+	{
+		useCubaseNames = true;
+		Debug.log("Using cubase names/descriptions");
+	}
+	
+	
+	/**
+	 * Called from UserInterface if the user wants to use a fixed string for naming output audio files
+	 * @param n the name to be used (will be followed by "_0001", "_0002" etc)
+	 */
+	public void useFixedName(String n)
+	{
+		fixedName = Utils.getValidFileNameString(n);
+		if (fixedName.isEmpty() || fixedName == "")
+		{
+			fixedName = "invalid_file_name";
+		}
+		Debug.log("Using fixed name: "+fixedName);
+		useCubaseNames = false;
+	}
+	
+	/**
+	 * Called by WaveformGenerator when it is done generating
+	 * @param caller the calling WaveformGenerator
+	 * @param success was it successful?
+	 * @param inputAudioFile the InputAudioFile the waveform was created on the basis of (might not be the same as currentInputAudioFile).
+	 */
+	public void waveformGeneratorCallback(WaveformGenerator caller, boolean success,InputAudioFile inputAudioFile, String waveformPng)
+	{
+		//Is this correct use of 'synchronized'? I am not so experienced with muti-threading..
+		synchronized (this)
+		{
+			if (caller != currentlyRunningWaveformGenerator)
+			{
+				Debug.log("Error in WaveformGeneratorCallback(). caller != currentlyRunningWaveformGenerator");
+			}
+			currentlyRunningWaveformGenerator = null;
+			if (inputAudioFile != currentInputAudioFile)//If we have read a new audio file since caller was started
+			{
+				Utils.deleteFile(waveformPng);
+				createWaveform();
+				return;
+			}
+			else
+			{
+				Debug.log("Done generating waveform");
+				sendEventToInterface(EngineEvent.DONE_GENERATING_WAVEFORM);
+				if(success)
+				{
+					userInterface.waveformCreated(waveformPng);
+				}
+				else
+				{
+					sendMessageToUser(UserMessageType.WARNING, "Could somehow not create waveform preview");
+				}
+			}
+		}
+		
+	}
+	
+	/**
+	 * Clears audioBites, removes range markers in the UserInterface and tells it that we are not ready for splitting
+	 */
+	private void clearAudioBites()
+	{
+		deleteRangeMarkers();
+		audioBites.clear();
+		sendEventToInterface(EngineEvent.NOT_READY_FOR_SPLIT);
+		//ResetTrailingTime();
+	}
+	
+	/**
+	 * Sets currentInputAudioFile to null and sends relevant messages to the UserInterface
+	 */
+	private void clearCurrentAudioFile()
+	{
+		currentInputAudioFile = null;
+		sendEventToInterface(EngineEvent.CLEAR_AUDIO_FILE);
+		sendEventToInterface(EngineEvent.NOT_READY_FOR_XML);
+		sendEventToInterface(EngineEvent.NOT_READY_FOR_SPLIT);
+	}
+	
+	
+	/**
+	 * Clears the path to output folder.
+	 * To avoid writing to previously specified folder.
+	 */
+	private void clearOutputFolder()
+	{
+		outputFolder = "noPath";
+		outputFolderSet = false;
+	}
+	
+	/**
+	 * Creates the files by starting a new AudioSplitter
+	 */
+	private void createFiles()
+	{
+		if (! outputFolderSet)
+		{
+			sendMessageToUser(UserMessageType.ERROR, "Trying to create files without output folder being set. Cancelling.");
+			return;
+		}
+		if (audioBites == null || (audioBites.size() == 0))
+		{
+			sendMessageToUser(UserMessageType.ERROR, "Can't create output files since no regions are currently in memory");
+			return;
+		}
+		
+		if (convertToMp3)
+		{
+			sendMessageToUser(UserMessageType.STATE, "Extracting and converting "+ audioBites.size() +" file(s) to destination folder: " + outputFolder + " ...");
+		}
+		else
+		{
+			sendMessageToUser(UserMessageType.STATE, "Extracting "+ audioBites.size() +" file(s) to destination folder: " + outputFolder + " ...");
+		}
+		
+		if (renamedAudioBitesInLastXML > 0 && useCubaseNames)
+        {
+        	sendMessageToUser(UserMessageType.WARNING,renamedAudioBitesInLastXML +" files were renamed since their Cubase names are not unique");
+        }
+		currentlyRunningSplitter = new AudioOutputter(currentInputAudioFile,audioBites,outputFolder,soxPath, ffmpegPath,temporaryFolderPath, convertToMp3, convertToMp3FFMPEGBitrateArgument, useCubaseNames, fixedName, this);
+		
+		currentlyRunningSplitter.start();
+		sendEventToInterface(EngineEvent.OUTPUTTING_FILES);
+	
+	}
+	
+	/**
+	 * Creates a downsampled version of the current input audio file to be used for extracting waveform data.
+	 */
+	private void createWaveform()
+	{
+		if (currentInputAudioFile == null)
+		{
+			sendMessageToUser(UserMessageType.ERROR,"Can't create waveform since there is no currently no reference to an audio file !(?)");
+			return;
+		}
+		if (currentlyRunningWaveformGenerator == null)
+		{
+			currentlyRunningWaveformGenerator = new WaveformGenerator(currentInputAudioFile, ffmpegPath, temporaryFolderPath, waveformWidth, waveformHeight, this);
+			currentlyRunningWaveformGenerator.start();
+			sendEventToInterface(EngineEvent.GENERATING_WAVEFORM);
+		}
+		else//else, this function will be called when currentlyRunningWaveformGenerator calls back
+		{
+			Debug.log("Already creating waveform. Waiting until current process is done");
+		}
+		
+	}
+	
+	/**
+	 * Deletes range markers in the UserInterface
+	 */
+	private void deleteRangeMarkers()
+	{
+		userInterface.deleteRangeMarkers();
+	}
+	
+	/**
+	 * Checks if the chosen output folder contains any files with the same name as any of the audio files to be written.
+	 * @return boolean[2]. First boolean indicates whether output folder contains file(s) to be overwritten. The second boolean indicates whether it is the special case where input audio file will be overwritten.
+	 */
+	private boolean[] outputFolderContainsFilesAlready()
+	{
+		boolean[] result = new boolean[]{false,false};
+		if (outputFolderSet)
+		{
+			try
+			{
+				if (useCubaseNames)
+				{
+					for (AudioBite b : audioBites)
+					{
+						String fileName = outputFolder+"/"+b.getName()+".";
+						if (convertToMp3)
+						{
+							fileName += "mp3";
+						}
+						else
+						{
+							fileName += currentInputAudioFile.getFileExtension();
+						}
+						
+						File f = new File(fileName);
+						if (f != null && f.exists() && f.isFile())
+						{
+							result[0] = true;
+						}
+						if (currentInputAudioFile != null && (currentInputAudioFile.getFilename().compareTo(fileName) == 0))
+						{
+							result[1] = true;
+						}
+					}
+				}
+				else
+				{
+					for (int i = 0; i < audioBites.size(); i++)
+					{
+						String fileName = outputFolder+"/"+fixedName+"_"+String.format("%04d", i+1)+".";
+						if (convertToMp3)
+						{
+							fileName += "mp3";
+						}
+						else
+						{
+							fileName += currentInputAudioFile.getFileExtension();
+						}
+						File f = new File(fileName);
+						if (f != null && f.exists() && f.isFile())
+						{
+							result[0] = true;
+						}
+						if (currentInputAudioFile != null && (currentInputAudioFile.getFilename().compareTo(fileName) == 0))
+						{
+							result[1] = true;
+						}
+					}
+				}
+			}
+			catch(Exception e)
+			{
+				Debug.log("Exception caught while trying to check for existing files:");
+				e.printStackTrace();
+			}
+		}
+		return result;
+	}
+	
 	
 	/**
 	 * Takes over from readXML() and does further work with the AudioBites found in the XML file.
@@ -238,265 +803,9 @@ public class ExporterEngine
 		//PrintAudioBites();
 	}
 	
-	/**
-	 * Creates a new InputAudioFileBuilder and makes it create a new InputAudioFile as a representation of the specified audio file.
-	 * The InputAudioFileBuilder later calls InputAudioFileBuilderCallback() when it is done building the InputAudioFile
-	 * @param fileName full path to an audio file
-	 */
-	public void readInputAudioFile(String fileName)
-	{
-		clearCurrentAudioFile();
-		clearAudioBites();
-		currentlyRunningInputAudioFileBuilder = new InputAudioFileBuilder(fileName, soxiPath, this);
-		currentlyRunningInputAudioFileBuilder.start();
-		sendEventToInterface(EngineEvent.READING_AUDIO_FILE);
-		sendMessageToUser(UserMessageType.STATE, "Loading audio file...");
-	}
-	
-	/**
-	 * Function called by InputAudioFileBuilder when it is done building the InputAudioFile
-	 * @param caller the InputAudioFileBuilder calling this function
-	 * @param builtFile the built InputAudioFile
-	 */
-	public void inputAudioFileBuilderCallback(InputAudioFileBuilder caller,InputAudioFile builtFile)
-	{
-		//Is this correct use of 'synchronized'? I am not so experienced with muti-threading..
-		synchronized (this)
-		{
-			if (caller != currentlyRunningInputAudioFileBuilder)
-			{
-				Debug.log("Error. Somehow, InputAudioFileBuilderCallback() was called from other caller than currentlyRunningInputAudioFileBuilder");
-				return;
-			}
-			Debug.log("Done building InputAudioFile");
-			currentlyRunningInputAudioFileBuilder = null;
-			if (builtFile == null)
-			{
-				sendEventToInterface(EngineEvent.ERROR_READING_AUDIO_FILE);
-				sendMessageToUser(UserMessageType.ERROR, "Could not read audio file");
-			}
-			else if (builtFile.getIsValid())
-			{
-				currentInputAudioFile = builtFile;
-				userInterface.audioFileRead(currentInputAudioFile);
-				sendEventToInterface(EngineEvent.READY_FOR_XML);
-				sendMessageToUser(UserMessageType.STATE, "Audio file loaded: " + currentInputAudioFile.getFilename());
-				createWaveform();
-			}
-			else
-			{
-				sendEventToInterface(EngineEvent.ERROR_READING_AUDIO_FILE);
-				sendMessageToUser(UserMessageType.ERROR, "Could not read audio file: "+ builtFile.getFilename());
-			}
-		}
-	}
-	
-	/**
-	 * Creates a downsampled version of the current input audio file to be used for extracting waveform data.
-	 */
-	private void createWaveform()
-	{
-		if (currentInputAudioFile == null)
-		{
-			sendMessageToUser(UserMessageType.ERROR,"Can't create waveform since there is no currently no reference to an audio file !(?)");
-			return;
-		}
-		if (currentlyRunningWaveformGenerator == null)
-		{
-			currentlyRunningWaveformGenerator = new WaveformGenerator(currentInputAudioFile, waveformFile, soxPath, waveformWidth, this);
-			currentlyRunningWaveformGenerator.start();
-			sendEventToInterface(EngineEvent.GENERATING_WAVEFORM);
-		}
-		else//else, this function will be called when currentlyRunningWaveformGenerator calls back
-		{
-			Debug.log("Already creating waveform. Waiting until current process is done");
-		}
-		
-	}
-	
-	/**
-	 * Called by WaveformGenerator when it is done generating
-	 * @param caller the calling WaveformGenerator
-	 * @param success was it successful?
-	 * @param inputAudioFile the InputAudioFile the waveform was created on the basis of (might not be the same as currentInputAudioFile).
-	 */
-	public void waveformGeneratorCallback(WaveformGenerator caller, boolean success,InputAudioFile inputAudioFile, double[][] waveformData)
-	{
-		//Is this correct use of 'synchronized'? I am not so experienced with muti-threading..
-		synchronized (this)
-		{
-			if (caller != currentlyRunningWaveformGenerator)
-			{
-				Debug.log("Error in WaveformGeneratorCallback(). caller != currentlyRunningWaveformGenerator");
-			}
-			currentlyRunningWaveformGenerator = null;
-			if (inputAudioFile != currentInputAudioFile)//If we have read a new audio file since caller was started
-			{
-				createWaveform();
-				return;
-			}
-			else
-			{
-				Debug.log("Done generating waveform");
-				sendEventToInterface(EngineEvent.DONE_GENERATING_WAVEFORM);
-				if(success)
-				{
-					userInterface.waveformCreated(waveformData);
-				}
-				else
-				{
-					sendMessageToUser(UserMessageType.WARNING, "Could somehow not create waveform preview");
-				}
-			}
-		}
-		
-	}
-	
 	private void sendEventToInterface(EngineEvent e)
 	{
 		userInterface.receiveEvent(e);
-	}
-
-	/**
-	 * Sets the output folder and at the same time starts the output process.
-	 * @param path path to the folder in which the output file should be written
-	 */
-	public void setOutputFolder(String path)
-	{
-		if (currentlyRunningSplitter != null)
-		{
-			sendMessageToUser(UserMessageType.ERROR, "Can't output files now since the exporter is already in the process of outputting");
-			return;
-		}
-		try
-		{
-			File f = new File(path);
-			if((f != null) && f.exists() && f.isDirectory())
-			{
-				outputFolder = path;
-				outputFolderSet = true;
-				boolean[] folderContainsFilesResult = outputFolderContainsFilesAlready();
-				if (folderContainsFilesResult[1])//If it is the special case where input audio file will be overwritten
-				{
-					sendEventToInterface(EngineEvent.INPUT_FILE_TO_BE_OVERWRITTEN);
-					return;//Not allowed, do no further processing
-				}
-				if (folderContainsFilesResult[0])//If other 'normal' files will be overwritten
-				{
-					sendEventToInterface(EngineEvent.FILES_TO_BE_OVERWRITTEN);
-				}
-				else
-				{
-					createFiles();
-				}
-			}
-			else
-			{
-				sendMessageToUser(UserMessageType.ERROR, "Could not find destination folder: "+ path);
-			}
-		}
-		catch (Exception e)
-		{
-			sendMessageToUser(UserMessageType.ERROR, "An error occurred while trying to validate destination folder: "+ path);
-			Debug.log("Exception caught while trying to validate output folder:");
-			e.printStackTrace();
-		}
-	}
-
-	/**
-	 * Clears the path to output folder.
-	 * To avoid writing to previously specified folder.
-	 */
-	private void clearOutputFolder()
-	{
-		outputFolder = "noPath";
-		outputFolderSet = false;
-	}
-
-	/**
-	 * Called from the UserInterface when the user accepts overwriting existing files
-	 */
-	public void createFilesOverwriteAccepted()
-	{
-		createFiles();
-	}
-
-	/**
-	 * Creates the files by starting a new AudioSplitter
-	 */
-	private void createFiles()
-	{
-		if (! outputFolderSet)
-		{
-			sendMessageToUser(UserMessageType.ERROR, "Trying to create files without output folder being set. Cancelling.");
-			return;
-		}
-		if (audioBites == null || (audioBites.size() == 0))
-		{
-			sendMessageToUser(UserMessageType.ERROR, "Can't create output files since no regions are currently in memory");
-			return;
-		}
-		sendMessageToUser(UserMessageType.STATE, "Writing "+ audioBites.size() +" file(s) to destination folder: " + outputFolder + " ...");
-		 if (renamedAudioBitesInLastXML > 0 && useCubaseNames)
-        {
-        	sendMessageToUser(UserMessageType.WARNING,renamedAudioBitesInLastXML +" files were renamed since their Cubase names are not unique");
-        }
-		currentlyRunningSplitter = new SoxSplitter(currentInputAudioFile,audioBites,outputFolder,soxPath, useCubaseNames, fixedName, this);
-		
-		currentlyRunningSplitter.start();
-		sendEventToInterface(EngineEvent.OUTPUTTING_FILES);
-	
-	}
-	
-	/**
-	 * Called from the AudioSplitter when this is done
-	 * @param successes the number of successfully created files
-	 * @param total the number of the files that were supposed to be created
-	 * @param caller the AudioSplitter calling this function
-	 */
-	public void audioSplitterCallback(int successes, int total, AudioSplitter caller)
-	{
-		//Is this correct use of 'synchronized'? I am not so experienced with muti-threading..
-		synchronized (this)
-		{
-			if (successes == total)
-			{
-				sendMessageToUser(UserMessageType.SUCCESS, successes + " audio file(s) successfully created in folder: "+outputFolder);
-			}
-			else
-			{
-				sendMessageToUser(UserMessageType.ERROR, "Error(s) accured while creating " + (total - successes) + " audio file(s).");
-				sendMessageToUser(UserMessageType.STATE, successes + " audio files successfully created in folder: "+outputFolder);
-			}
-			if (caller != currentlyRunningSplitter)
-			{
-				Debug.log("Error in AudioSplitterCallback(). caller != currentlyRunningSplitter");
-			}
-			currentlyRunningSplitter = null;
-			sendEventToInterface(EngineEvent.DONE_OUTPUTTING_FILES);
-		}
-	}
-	
-	/**
-	 * Sets the amount of time (seconds) that each AudioBite is extended in length compared to the actual event/region in Cubase
-	 * @param seconds
-	 */
-	public void setTrailingTime(double seconds)
-	{
-		if (trailingTime != seconds)
-		{
-			trailingTime = seconds;
-			if (audioBites.size() >0)
-			{
-				setFunctionalEndAndOutputRangeMarkers();
-			}
-		}
-		Debug.log("Trailing time set to "+seconds+" seconds");
-	}
-	
-	public void setWaveformWidth(int width)
-	{
-		waveformWidth = width;
 	}
 	
 	/**
@@ -532,142 +841,50 @@ public class ExporterEngine
 	}
 	
 	/**
-	 * Clears audioBites, removes range markers in the UserInterface and tells it that we are not ready for splitting
+	 * Set up the different paths. Calculated from paths relative to jar file.
 	 */
-	private void clearAudioBites()
+	private void setPaths()
 	{
-		deleteRangeMarkers();
-		audioBites.clear();
-		sendEventToInterface(EngineEvent.NOT_READY_FOR_SPLIT);
-		//ResetTrailingTime();
-	}
-	
-	/**
-	 * Deletes range markers in the UserInterface
-	 */
-	private void deleteRangeMarkers()
-	{
-		userInterface.deleteRangeMarkers();
-	}
-	
-	
-	/**
-	 * Sends a message to the user. Printed in the Log window.
-	 * @param type type of message - determines how it is shown.
-	 * @param message the actual message
-	 */
-	public void sendMessageToUser(UserMessageType type, String message)
-	{
-		userInterface.sendMessageToUser(type, message);
-	}
-	
-	
-	/**
-	 * Checks if the chosen output folder contains any files with the same name as any of the audio files to be written.
-	 * @return boolean[2]. First boolean indicates whether output folder contains file(s) to be overwritten. The second boolean indicates whether it is the special case where input audio file will be overwritten.
-	 */
-	private boolean[] outputFolderContainsFilesAlready()
-	{
-		boolean[] result = new boolean[]{false,false};
-		if (outputFolderSet)
+		String fileSeparator = Utils.getFileSeparator();
+		//Calculate paths
+		if (userInterface.computerIsMac())
 		{
-			try
-			{
-				if (useCubaseNames)
-				{
-					for (AudioBite b : audioBites)
-					{
-						String fileName = outputFolder+"/"+b.getName()+"."+currentInputAudioFile.getFileExtension();
-						File f = new File(fileName);
-						if (f != null && f.exists() && f.isFile())
-						{
-							result[0] = true;
-						}
-						if (currentInputAudioFile != null && (currentInputAudioFile.getFilename().compareTo(fileName) == 0))
-						{
-							result[1] = true;
-						}
-					}
-				}
-				else
-				{
-					for (int i = 0; i < audioBites.size(); i++)
-					{
-						String fileName = outputFolder+"/"+fixedName+"_"+String.format("%04d", i+1)+"."+currentInputAudioFile.getFileExtension();
-						File f = new File(fileName);
-						if (f != null && f.exists() && f.isFile())
-						{
-							result[0] = true;
-						}
-						if (currentInputAudioFile != null && (currentInputAudioFile.getFilename().compareTo(fileName) == 0))
-						{
-							result[1] = true;
-						}
-					}
-				}
-			}
-			catch(Exception e)
-			{
-				Debug.log("Exception caught while trying to check for existing files:");
-				e.printStackTrace();
-			}
+			String pathToContentsFolder = Utils.getJarPath(2);
+			soxPath = pathToContentsFolder + fileSeparator + "sox" + fileSeparator + "sox";
+			soxiPath = pathToContentsFolder + fileSeparator + "sox" + fileSeparator + "soxi";
+			ffmpegPath = pathToContentsFolder + fileSeparator + "ffmpeg" + fileSeparator + "ffmpeg";
 		}
-		return result;
-	}
-	
-	/**
-	 * Called from UserInterface if the user wants to use output audio file naming based on event names/descriptions in Cubase (in track XML file)
-	 */
-	public void useCubaseNames()
-	{
-		useCubaseNames = true;
-		Debug.log("Using cubase names/descriptions");
-	}
-	
-	/**
-	 * Called from UserInterface if the user wants to use a fixed string for naming output audio files
-	 * @param n the name to be used (will be followed by "_0001", "_0002" etc)
-	 */
-	public void useFixedName(String n)
-	{
-		fixedName = Utils.getValidFileNameString(n);
-		if (fixedName.isEmpty() || fixedName == "")
+		else
 		{
-			fixedName = "invalid_file_name";
+			String pathToMainFolder = Utils.getJarPath(1);
+			String pathToResourcesFolder = pathToMainFolder + fileSeparator + "resources";
+			
+			soxPath = pathToResourcesFolder +fileSeparator + "sox" + fileSeparator + "sox";
+			soxiPath = pathToResourcesFolder + fileSeparator + "sox" + fileSeparator + "soxi";
+			ffmpegPath = pathToResourcesFolder + fileSeparator + "ffmpeg" + fileSeparator + "ffmpeg";
 		}
-		Debug.log("Using fixed name: "+fixedName);
-		useCubaseNames = false;
-	}
-
-	/**
-	 * Sets full path to the file to be created by WaveformGenerator. Called by UserInterface.
-	 * @param name full path file name
-	 */
-	public void setWaveformFileName(String name)
-	{
-		waveformFile = name;
-	}
-	
-	/**
-	 * Sets the path to the sox program. Called by UserInterface.
-	 * @param path
-	 */
-	public void setSoxPath(String path)
-	{
-		soxPath = path;
-		Debug.log("Sox path set to: " + soxPath);
+		
+		try
+		{
+			Path p = Files.createTempDirectory("MultiRegionExporterForCubase");
+			temporaryFolderPath = p.toString();
+		}
+		catch(Exception e)
+		{
+			Debug.log("Exception caught while trying to create temoprary folder:");
+			e.printStackTrace();
+		}
+		
+		Debug.log("Path to temporary folder: "+temporaryFolderPath);
+		Debug.log("Sox path set to: "+soxPath);
+		Debug.log("Soxi path set to: "+soxiPath);
+		Debug.log("FFMPEG path set to: "+ffmpegPath);
 	}
 	
 	/**
-	 * Sets the path to the soxi shortcut. Called by UserInterface.
-	 * @param path
+	 * Validates naming of AudioBites (two files can't share same name)
+	 * @return number of bites that were renamed
 	 */
-	public void setSoxiPath(String path)
-	{
-		soxiPath = path;
-		Debug.log("Soxi path set to: " + soxiPath);
-	}
-	
 	private int ValidateAudioBiteNames()
 	{
 		Map<String, AudioBite> nameToBiteMap = new HashMap<String,AudioBite>();
@@ -723,89 +940,5 @@ public class ExporterEngine
 		}
 		return numRenamedAudioBites;
 	}
-	
-	/**
-	 * Method for registering a running Process that needs to be stopped if program is closed before it is done.
-	 * @param p Process to register
-	 */
-	public void registerStartedProcess(Process p)
-	{
-		//Is this correct use of 'synchronized'? I am not so experienced with muti-threading..
-		synchronized(startedProcesses)
-		{
-			if (startedProcesses == null)
-			{
-				startedProcesses = new ArrayList<Process>();
-			}
-			startedProcesses.add(p);
-		}
-	}
-	
-	/**
-	 * Method for unregistering a Process previously registered as running.
-	 * @param p Process to unregister
-	 */
-	public void unregisterStartedProcess(Process p)
-	{
-		//Is this correct use of 'synchronized'? I am not so experienced with muti-threading..
-		synchronized(startedProcesses)
-		{ 
-			if (startedProcesses != null)
-			{
-				startedProcesses.remove(p);
-			}
-		}
-	}
-	
-	/**
-	 * Method to be called when closing the application.
-	 * Interrupts running threads an destroys registered running processes.
-	 */
-	public void stopStartedProcesses()
-	{
-		try
-		{
-			if (currentlyRunningSplitter != null)
-			{
-				Debug.log("Trying to interrupt currentlyRunningSplitter");
-				currentlyRunningSplitter.interrupt();
-			}
-			
-			if (currentlyRunningWaveformGenerator != null)
-			{
-				Debug.log("Trying to interrupt currentlyRunningWaveformGenerator");
-				currentlyRunningWaveformGenerator.interrupt();
-			}
-			
-			if (currentlyRunningInputAudioFileBuilder != null)
-			{
-				Debug.log("Trying to interrupt currentlyRunningInputAudioFileBuilder");
-				currentlyRunningInputAudioFileBuilder.interrupt();
-			}
-			if (startedProcesses != null)
-			{
-				if (startedProcesses.size() > 0)
-				{
-					Debug.log("Stopping "+ startedProcesses.size() + " process(es)");
-					for (Process p : startedProcesses)
-					{
-						if (p != null)
-						{
-							p.destroyForcibly();
-						}
-					}
-				}
-				else
-				{
-					Debug.log("No started processes to stop");
-				}
-			}
-		}
-		catch (Exception e)
-		{
-			e.printStackTrace();
-		}
-	}
-	
 	
 }

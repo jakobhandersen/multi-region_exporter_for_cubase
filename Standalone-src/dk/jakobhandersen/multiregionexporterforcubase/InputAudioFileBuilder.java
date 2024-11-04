@@ -1,5 +1,5 @@
 //    Multi-region Exporter - for Cubase
-//    Copyright (C) 2016 Jakob Hougaard Andsersen
+//    Copyright (C) 2017 Jakob Hougaard Andsersen
 //
 //    This program is free software: you can redistribute it and/or modify
 //    it under the terms of the GNU General Public License as published by
@@ -73,7 +73,12 @@ public class InputAudioFileBuilder extends Thread
 			ProcessBuilder pb = new ProcessBuilder(cmdAndArgs);
 			Process p = pb.start();
 			caller.registerStartedProcess(p);
-			String output = getOutputFromProcess(p);
+			int result = p.waitFor();
+			String output = null;
+			if (result == 0)
+			{
+				output = getOutputFromProcess(p);
+			}
 			if (this.isInterrupted())
 			{
 				Debug.log("Thread interrupted. Exiting.");
@@ -108,7 +113,12 @@ public class InputAudioFileBuilder extends Thread
 			pb = new ProcessBuilder(cmdAndArgs);
 			p = pb.start();
 			caller.registerStartedProcess(p);
-			output = getOutputFromProcess(p);
+			result = p.waitFor();
+			output = null;
+			if (result == 0)
+			{
+				output = getOutputFromProcess(p);
+			}
 			if (this.isInterrupted())
 			{
 				Debug.log("Thread interrupted. Exiting.");
@@ -135,7 +145,12 @@ public class InputAudioFileBuilder extends Thread
 			pb = new ProcessBuilder(cmdAndArgs);
 			p = pb.start();
 			caller.registerStartedProcess(p);
-			output = getOutputFromProcess(p);
+			result = p.waitFor();
+			output = null;
+			if (result == 0)
+			{
+				output = getOutputFromProcess(p);
+			}
 			if (this.isInterrupted())
 			{
 				Debug.log("Thread interrupted. Exiting.");
@@ -162,7 +177,12 @@ public class InputAudioFileBuilder extends Thread
 			pb = new ProcessBuilder(cmdAndArgs);
 			p = pb.start();
 			caller.registerStartedProcess(p);
-			output = getOutputFromProcess(p);
+			result = p.waitFor();
+			output = null;
+			if (result == 0)
+			{
+				output = getOutputFromProcess(p);
+			}
 			if (this.isInterrupted())
 			{
 				Debug.log("Thread interrupted. Exiting.");

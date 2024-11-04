@@ -1,5 +1,5 @@
 //    Multi-region Exporter - for Cubase
-//    Copyright (C) 2016 Jakob Hougaard Andsersen
+//    Copyright (C) 2017 Jakob Hougaard Andsersen
 //
 //    This program is free software: you can redistribute it and/or modify
 //    it under the terms of the GNU General Public License as published by
@@ -42,6 +42,7 @@ import org.eclipse.swt.graphics.Color;
 import org.eclipse.swt.graphics.Cursor;
 import org.eclipse.swt.graphics.Device;
 import org.eclipse.swt.graphics.GC;
+import org.eclipse.swt.graphics.Image;
 import org.eclipse.swt.widgets.FileDialog;
 import org.eclipse.swt.widgets.DirectoryDialog;
 import org.eclipse.swt.widgets.Group;
@@ -55,6 +56,7 @@ import org.eclipse.swt.graphics.Rectangle;
 import org.eclipse.swt.custom.CLabel;
 import org.eclipse.swt.events.TraverseListener;
 import org.eclipse.swt.events.TraverseEvent;
+import org.eclipse.swt.widgets.Combo;
 
 
 /**
@@ -70,6 +72,33 @@ import org.eclipse.swt.events.TraverseEvent;
  */
 public class MultiRegionExporterForCubase implements UserInterface
 {
+	/**
+	 * Are we running on a Mac?
+	 * Note that SWT behaves a little bit different on Windows and Mac.
+	 * Therefore we need to do some conditional layout etc.
+	 */
+	public static boolean isMac;
+	
+	/**
+	 * Launch the application.
+	 * @param args
+	 */
+	public static void main(String[] args) 
+	{	
+		try 
+		{
+			System.setProperty("user.dir", new File(MultiRegionExporterForCubase.class.getProtectionDomain().getCodeSource().getLocation().toURI().getPath()).getAbsolutePath());
+			Display.setAppName("Multi-region Exporter - for Cubase");
+			MultiRegionExporterForCubase window = new MultiRegionExporterForCubase();
+			window.open();
+		} 
+		catch (Exception e) 
+		{
+			e.printStackTrace();
+		}
+		Debug.log("Exiting system");
+		System.exit(0);
+	}
 	//SWT variables
 	//Note that some SWT variables (buttons etc.) need to be accessible in the whole class while others are only defined in the createContents function.
 	protected Shell shell;
@@ -78,13 +107,14 @@ public class MultiRegionExporterForCubase implements UserInterface
 	private Button btnLoadAudioFile;
 	private Button btnLoadTrackFile;
 	private Button btnOutputFiles;
-	private Table table_1;
+	private Table logWindowTable;
 	private CLabel lblAudioFileName;
 	private CLabel lblAudioFileInfo;
 	private CLabel lblTrackFileName;
 	private Label waveformLabel;
-	private Label lblgeneratingWaveform;
-	private Spinner spinner;
+	private Combo comboConstantVariableBitrate;
+	private Combo comboBitrateVariable;
+	private Combo comboBitrateConstant;
 	
 	
 	//Other variables
@@ -112,7 +142,7 @@ public class MultiRegionExporterForCubase implements UserInterface
 	/**
 	 * Waveform data. Min and max for each horizontal pixel.
 	 */
-	private double[][] currentWaveformData;
+	private String currentWaveformPng;
 	
 	/**
 	 * Rectangles representing the range/region markers
@@ -123,6 +153,7 @@ public class MultiRegionExporterForCubase implements UserInterface
 	 * Color of the range markers
 	 */
 	private Color rangeMarkerColor = new Color(device,0,255,0);
+
 	
 	/**
 	 * Alpha of the range markers
@@ -135,16 +166,6 @@ public class MultiRegionExporterForCubase implements UserInterface
 	private String pathToOnlineDocumentation;
 	
 	/**
-	 * Path to the SoX executable
-	 */
-	private String pathToSox;
-	
-	/**
-	 * Path to the SoXi executable
-	 */
-	private String pathToSoxi;
-	
-	/**
 	 * Path to the local documentation file
 	 */
 	private String pathToLocalDocumentation;
@@ -155,21 +176,30 @@ public class MultiRegionExporterForCubase implements UserInterface
 	private File localDocumentationFile;
 	
 	/**
-	 * File name of the temporary, downsampled wave file to be created in the waveform generation process
+	 * Mapping from constant mp3 bitrate menu to ffmpeg string argument
 	 */
-	private String pathToWaveform;
+	private String[] constantMp3BitrateArguments = new String[] {"-b:a 8k","-b:a 16k","-b:a 24k","-b:a 32k","-b:a 40k","-b:a 48k","-b:a 64k","-b:a 80k","-b:a 96k","-b:a 112k","-b:a 128k","-b:a 160k","-b:a 192k","-b:a 224k","-b:a 256k","-b:a 320k"};
 	
 	/**
-	 * Are we running on a Mac?
-	 * Note that SWT behaves a little bit different on Windows and Mac.
-	 * Therefore we need to do some conditional layout etc.
+	 * Mapping from variable mp3 bitrate menu to ffmpeg string argument
 	 */
-	public static boolean isMac;
+	private String[] variableMp3BitrateArguments = new String[] {"-q:a 9","-q:a 8","-q:a 7","-q:a 6","-q:a 5","-q:a 4","-q:a 3","-q:a 2","-q:a 1","-q:a 0"};
+	
+	/**
+	 * Dialog shown when outputting files
+	 */
+	private OutputtingDialog outputtingDialog;
+	
+	/**
+	 * Text shown when the waveform is being generated
+	 */
+	private String generatingWaveformText = "";
 	
 	/**
 	 * Milliseconds between each tick of generatingWaveformTextTimer
 	 */
 	private final int generatingWaveformTextTimerTime = 250;
+	
 	
 	/**
 	 * Timer to handle movement in the 'generating waveform' user notification
@@ -184,32 +214,47 @@ public class MultiRegionExporterForCubase implements UserInterface
 			{
 				dotString += ".";
 			}
-			lblgeneratingWaveform.setText(dotString + "generating waveform" + dotString);
+			generatingWaveformText = dotString + "generating waveform" + dotString;
+			waveformLabel.redraw();
 			i = (i + 1) % 4;
 	        display.timerExec(generatingWaveformTextTimerTime, this);
 		}
 	};
 	
+	@Override
+	public void audioFileRead(InputAudioFile f) 
+	{
+		Display.getDefault().syncExec(new Runnable() 
+		{
+		    public void run() 
+		    {
+		    	shell.setCursor(new Cursor(display, SWT.CURSOR_ARROW));
+		    	currentInputAudioFile = f;
+		    	btnLoadAudioFile.setEnabled(true);
+		    	lblAudioFileName.setText(f.getFilename());
+		    	lblAudioFileInfo.setText(f.getInfoString());
+		    }
+		});
+		
+	}
+
+	@Override
+	public boolean computerIsMac()
+	{
+		return isMac;
+	}
 	
-	/**
-	 * Launch the application.
-	 * @param args
-	 */
-	public static void main(String[] args) 
-	{	
-		try 
+	@Override
+	public void deleteRangeMarkers() 
+	{
+		Display.getDefault().syncExec(new Runnable() 
 		{
-			System.setProperty("user.dir", new File(MultiRegionExporterForCubase.class.getProtectionDomain().getCodeSource().getLocation().toURI().getPath()).getAbsolutePath());
-			Display.setAppName("Multi-region Exporter - for Cubase");
-			MultiRegionExporterForCubase window = new MultiRegionExporterForCubase();
-			window.open();
-		} 
-		catch (Exception e) 
-		{
-			e.printStackTrace();
-		}
-		Debug.log("Exiting system");
-		System.exit(0);
+		    public void run() 
+		    {
+		    	rangeMarkers = null;
+		    	waveformLabel.redraw();
+		    }
+		});
 	}
 	
 	/**
@@ -217,10 +262,10 @@ public class MultiRegionExporterForCubase implements UserInterface
 	 */
 	public void open() 
 	{
-		
+		isMac = SWT.getPlatform().equals("cocoa");
 		engine = new ExporterEngine(this);
 		display = Display.getDefault();
-		isMac = SWT.getPlatform().equals("cocoa");
+		
 		
 		createContents();
 		
@@ -235,9 +280,475 @@ public class MultiRegionExporterForCubase implements UserInterface
 				display.sleep();
 			}
 		}
-		engine.stopStartedProcesses();
+		
+		engine.cleanUp();
+	}
+	
+	@Override
+	public void receiveEvent(EngineEvent e) 
+	{
+		Display.getDefault().syncExec(new Runnable() 
+		{
+		    public void run() 
+		    {
+				switch(e)
+				{
+				case CLEAR_AUDIO_FILE:
+					clearAudioFile();
+					break;
+					
+				case READY_FOR_XML:
+					btnLoadTrackFile.setEnabled(true);
+					btnLoadTrackFile.forceFocus();
+					break;
+					
+				case NOT_READY_FOR_XML:
+					btnLoadTrackFile.setEnabled(false);
+					break;
+					
+				case READY_FOR_SPLIT:
+					btnOutputFiles.setEnabled(true);
+					btnOutputFiles.forceFocus();
+					lblTrackFileName.setText(lastLoadedXmlFileName);
+					break;
+					
+				case NOT_READY_FOR_SPLIT:
+					btnOutputFiles.setEnabled(false);
+					lblTrackFileName.setText("none");
+					break;
+					
+				case READING_AUDIO_FILE:
+					btnLoadAudioFile.setEnabled(false);
+					shell.setCursor(new Cursor(display, SWT.CURSOR_WAIT));
+					break;
+					
+				case ERROR_READING_AUDIO_FILE:
+					shell.setCursor(new Cursor(display, SWT.CURSOR_ARROW));
+					btnLoadAudioFile.setEnabled(true);
+					btnLoadAudioFile.forceFocus();
+					break;
+					
+				case GENERATING_WAVEFORM:
+					display.timerExec(0, generatingWaveformTextTimer);
+					break;
+					
+				case DONE_GENERATING_WAVEFORM:
+					display.timerExec(-1, generatingWaveformTextTimer);
+					generatingWaveformText = "";
+					waveformLabel.redraw();
+					break;
+					
+				case FILES_TO_BE_OVERWRITTEN:
+					doOverwriteDialog();
+					break;
+					
+				case INPUT_FILE_TO_BE_OVERWRITTEN:
+					doInputFileOverwriteErrorDialog();
+					break;
+					
+				case OUTPUTTING_FILES:
+					startOutputtingFiles();
+					break;
+					
+				case DONE_OUTPUTTING_FILES:
+					stopOutputtingFiles();
+					break;
+					
+					default:
+						break;
+				}
+		    }
+		});
+		
+	}
+	
+	@Override
+	public void sendMessageToUser(UserMessageType type, String message) 
+	{
+		Display.getDefault().syncExec(new Runnable() 
+		{
+		    public void run() 
+		    {
+		    	//Non-wrapped solution
+				/*TableItem tableItem = new TableItem(table_1, SWT.NONE);
+				tableItem.setText(getStartStringForUserMessageType(type) + message);
+				tableItem.setForeground(getColorForUserMessageType(type));
+				table_1.showItem(tableItem);*/
+				
+				//Wrapped text solution
+				List<String> splitStrings = getWrappedString(getStartStringForUserMessageType(type) + message,573,logWindowTable);
+				for (int i = 0; i < splitStrings.size(); i++)
+				{
+					TableItem tableItem = new TableItem(logWindowTable, SWT.NONE);
+					tableItem.setText(splitStrings.get(i));
+					tableItem.setForeground(getColorForUserMessageType(type));
+					logWindowTable.showItem(tableItem);
+				}
+		    }
+		});
+		
+	}
+	
+	@Override
+	public void setOuputPercentage(int percentage) 
+	{
+		outputtingDialog.setProgressPercentage(percentage);
+	}
+	
+	
+	@Override
+	public void setOutputProcessText(String text)
+	{
+		outputtingDialog.setProcessText(text);
+	}
+	
+	@Override
+	public void setRangeMarkers(List<AudioBite> bites) 
+	{
+		Display.getDefault().syncExec(new Runnable() 
+		{
+		    public void run() 
+		    {
+		    	if (currentInputAudioFile != null)
+		    	{
+			    	rangeMarkers = new Rectangle[bites.size()];
+			    	int waveformWidth = waveformLabel.getBounds().width;
+		    		int waveformHeight = waveformLabel.getBounds().height;
+			    	for (int i = 0; i < bites.size(); i++)
+			    	{
+			    		AudioBite b = bites.get(i);
+			    		double startFraction = b.getStart() / currentInputAudioFile.getLength();
+			    		double lengthFraction = (b.getFunctionalEnd() - b.getStart()) / currentInputAudioFile.getLength();
+			    		rangeMarkers[i] = new Rectangle((int)(startFraction * waveformWidth),0,(int)(lengthFraction * waveformWidth),waveformHeight);
+			    	}
+		    	}
+		    	else
+		    	{
+		    		Debug.log("Error: Can't set range markers since currentInputAudioFile == null");
+		    		rangeMarkers = null;
+		    	}
+		    	waveformLabel.redraw();
+		    }
+		});
+		
+	}
+	
+	@Override
+	public void waveformCreated(String waveformPngFile) 
+	{
+		Display.getDefault().syncExec(new Runnable() 
+		{
+		    public void run() 
+		    {
+		    	currentWaveformPng = waveformPngFile;
+		    	waveformLabel.redraw();
+		    }
+		});
+		
+	}
+	
+	/**
+	 * Clear info on currently loaded audio file
+	 */
+	private void clearAudioFile()
+	{
+		//Clear text related to audio file
+		lblAudioFileName.setText("none");
+		lblAudioFileInfo.setText("");
+		
+		//clear waveform
+		generatingWaveformText = "";
+		display.timerExec(-1, generatingWaveformTextTimer);
+		if ((currentWaveformPng != null) && (!currentWaveformPng.isEmpty()))
+		{
+			Utils.deleteFile(currentWaveformPng);
+			currentWaveformPng = null;
+		}
+		waveformLabel.redraw();
+		
+		//clear currentInputAudioFile
+		currentInputAudioFile = null;
+		
+	}
+	
+	/**
+	 * Show dialog when trying to overwrite input audio file
+	 */
+	private void doInputFileOverwriteErrorDialog()
+	{
+		MessageBox messageDialog = new MessageBox(shell, 
+		        SWT.ICON_ERROR | 
+		        SWT.OK);
+	    messageDialog.setText("Error outputting files");
+	    messageDialog.setMessage("Outputting to the specified folder would overwrite the loaded input audio file since it shares the name of one of the files to be extracted. This is not allowed / possible. Select another output folder or change file naming settings.");
+	    messageDialog.open();
 	}
 
+	/**
+	 * Show overwrite files dialog 
+	 */
+	private void doOverwriteDialog()
+	{
+		MessageBox messageDialog = new MessageBox(shell, 
+			        SWT.ICON_QUESTION | 
+			        SWT.OK
+			        | SWT.CANCEL);
+	    messageDialog.setText("Overwrite files");
+	    messageDialog.setMessage("One or more of the files about to be created share the name of a file already existing in the specified output folder.\n\nDo you want to overwrite these files.");
+	    int returnCode = messageDialog.open();
+	    if (returnCode == 32)//ok
+	    {
+	    	Debug.log("Overwrite accepted");
+	    	engine.createFilesOverwriteAccepted();
+	    }
+	    else
+	    {
+	    	Debug.log("Overwrite canceled");
+	    }
+	}
+
+	/**
+	 * Get relevant color of user message of type t
+	 * @param t
+	 * @return
+	 */
+	private Color getColorForUserMessageType(UserMessageType t)
+	{
+		Color ret = SWTResourceManager.getColor(SWT.COLOR_BLACK);
+		switch (t)
+		{
+		case ERROR:
+			ret = SWTResourceManager.getColor(SWT.COLOR_DARK_RED);
+			break;
+			
+		case WARNING:
+			ret = SWTResourceManager.getColor(SWT.COLOR_DARK_BLUE);
+			break;
+			
+		case SUCCESS:
+			ret = SWTResourceManager.getColor(SWT.COLOR_DARK_GREEN);
+			break;
+		
+			default: break;
+		}
+		return ret;
+	}
+
+	/**
+	 * Get relevant start string for user message of type t
+	 * @param t 
+	 * @return 
+	 */
+	private String getStartStringForUserMessageType(UserMessageType t)
+	{
+		String ret = "";
+		switch (t)
+		{
+		case ERROR:
+			ret = "ERROR: ";
+			break;
+			
+		case WARNING:
+			ret = "WARNING: ";
+		
+			default: break;
+		}
+		return ret;
+	}
+	
+
+	/**
+	 * Returns wrapped string (List<String>)
+	 * @param fullString
+	 * @param maxWidth
+	 * @param control
+	 * @return
+	 */
+	private List<String> getWrappedString(String fullString,int maxWidth, Control control)
+	{
+		GC gc = new GC(control);
+		int stringWidth = gc.stringExtent(fullString).x;
+		List<String> splitStrings = new ArrayList<String>();
+		if (stringWidth <= maxWidth)
+		{
+			splitStrings.add(fullString);
+			return splitStrings;
+		}
+		String restString = fullString;
+		int restStringWidth = stringWidth;
+		while (restStringWidth > maxWidth)
+		{
+			String biteFromRest;
+			String restFromRest;
+			int startI = restString.length()-1;
+			for (int i = startI; i > 0; i--)
+			{
+				biteFromRest = restString.substring(0,i);
+				restFromRest = restString.substring(i);
+				if (gc.stringExtent(biteFromRest).x <= maxWidth)
+				{
+					splitStrings.add(biteFromRest);
+					restString = restFromRest;
+					restStringWidth = gc.stringExtent(restString).x;
+					break;
+				}
+			}
+		}
+		splitStrings.add(restString);
+		return splitStrings;
+	}
+
+	/**
+	 * Called when load audio file button is pressed
+	 */
+	private void loadAudioFile()
+	{
+		FileDialog fd = new FileDialog(shell, SWT.OPEN);
+        fd.setText("Load an audio file");
+        String[] filterExt = {"*.wav;*.aiff;*.aif;*.w64;*.flac"};
+        fd.setFilterExtensions(filterExt);
+        String selected = fd.open();
+        if (selected != null)
+        {
+        	engine.readInputAudioFile(selected);
+        }
+	}
+	
+	/**
+	 * Called when the load track file button is pressed
+	 */
+	private void loadTrackFile()
+	{
+		FileDialog fd = new FileDialog(shell, SWT.OPEN);
+        fd.setText("Load a Cubase track file (.xml)");
+        String[] filterExt = {"*.xml"};
+        fd.setFilterExtensions(filterExt);
+        String selected = fd.open();
+        if (selected != null)
+        {
+        	this.lastLoadedXmlFileName = selected;
+        	engine.readXML(selected);
+        }
+	}
+	
+	
+	/**
+	 * Called when the output files button is pressed
+	 */
+	private void outputFilesToFolder()
+	{
+		DirectoryDialog dd = new DirectoryDialog(shell, SWT.SAVE);
+        dd.setText("Choose where to put the audio files");
+        String selected = dd.open();
+        if (selected != null)
+        {
+        	engine.setOutputFolder(selected);
+        }
+	}
+	
+	/**
+	 * Called when mp3 conversion bitrate is changed/initialized
+	 */
+	private void sendMp3ConversionArgToEngine()
+	{
+		if (comboConstantVariableBitrate.getSelectionIndex() == 0)//Constant bitrate
+		{
+			engine.setMp3ConversionBitrateArgument(constantMp3BitrateArguments[comboBitrateConstant.getSelectionIndex()]);
+		}
+		else//Variable bitrate
+		{
+			engine.setMp3ConversionBitrateArgument(variableMp3BitrateArguments[comboBitrateVariable.getSelectionIndex()]);
+		}
+	}
+	
+	/**
+	 * Set up path(s). Calculated from paths relative to jar file.
+	 */
+	private void setPaths()
+	{
+		//Calculate paths
+//		if (isMac)
+//		{
+//			String pathToContentsFolder = Utils.getJarPath(2);
+//			String fileSeparator = Utils.getFileSeparator();
+//			pathToLocalDocumentation = pathToContentsFolder + fileSeparator + "documentation" + fileSeparator + "documentation.pdf";
+//		}
+		if (!isMac)//	Desktop.getDesktop().open() apparently doesn't work in bundled OS X App anymore, so path to local documentation is only relevant on Windows
+		{
+			String pathToMainFolder = Utils.getJarPath(1);
+			String fileSeparator = Utils.getFileSeparator();
+			pathToLocalDocumentation = pathToMainFolder + fileSeparator + "documentation" + fileSeparator + "documentation.pdf";
+			Debug.log("Path to local documentation set to: " + pathToLocalDocumentation);
+			localDocumentationFile = new File(pathToLocalDocumentation);
+		}
+		
+		pathToOnlineDocumentation = "http://jakobhandersen.dk/projects/multi-region-exporter/documentation/";
+		
+		Debug.log("Path to online documentation set to: " + pathToOnlineDocumentation);
+		
+	}
+	
+	/**
+	 * Do some startup setting up
+	 */
+	private void setup()
+	{
+		btnOutputFiles.setEnabled(false);
+		btnLoadTrackFile.setEnabled(false);
+		setPaths();
+		engine.setWaveformWidth(waveformLabel.getBounds().width);
+		engine.setWaveformHeight(waveformLabel.getBounds().height);
+		clearAudioFile();
+		lblTrackFileName.setText("none");
+		setUseCubaseNames();
+		outputtingDialog = new OutputtingDialog(shell,SWT.APPLICATION_MODAL);
+		
+	}
+	
+	/**
+	 * Tell engine to use Cubase names
+	 */
+	private void setUseCubaseNames()
+	{
+		engine.useCubaseNames();
+	}
+	
+	/**
+	 * Tell engine to use fixed name
+	 * @param s the name to use
+	 */
+	private void setUseFixedName(String s)
+	{
+		engine.useFixedName(s);
+	}
+
+	/**
+	 * Show the About dialog
+	 */
+	private void showAbout()
+	{
+		AboutDialog d = new AboutDialog(shell, SWT.APPLICATION_MODAL);
+		d.open();
+	}
+	
+	/**
+	 * Do things when outputting files
+	 */
+	private void startOutputtingFiles()
+	{
+		shell.setCursor(new Cursor(display, SWT.CURSOR_WAIT));
+		outputtingDialog.open();
+	}
+	
+	/**
+	 * Stop doing things when outputting files
+	 */
+	private void stopOutputtingFiles()
+	{
+		shell.setCursor(new Cursor(display, SWT.CURSOR_ARROW));
+		outputtingDialog.close();
+	}
+	
 	/**
 	 * Create contents of the window.
 	 */
@@ -247,14 +758,7 @@ public class MultiRegionExporterForCubase implements UserInterface
 		shell = new Shell();
 		shell.setSize(800, 800);
 		shell.setText("Multi-region Exporter - for Cubase");
-		
-		
-		lblgeneratingWaveform = new Label(shell, SWT.NONE);
-		lblgeneratingWaveform.setBackground(SWTResourceManager.getColor(SWT.COLOR_WIDGET_NORMAL_SHADOW));
-		lblgeneratingWaveform.setFont(SWTResourceManager.getFont("Arial", 14, SWT.NORMAL));
-		lblgeneratingWaveform.setAlignment(SWT.CENTER);
-		lblgeneratingWaveform.setText("...generating waveform...");
-		lblgeneratingWaveform.setBounds(172, 194, 590, 36);
+		shell.setBackgroundMode(SWT.INHERIT_DEFAULT); 
 		
 		Group grpAudioFile = new Group(shell, SWT.NONE);
 		grpAudioFile.setToolTipText("Info on loaded audio file");
@@ -335,7 +839,7 @@ public class MultiRegionExporterForCubase implements UserInterface
 		lblVersion.setAlignment(SWT.RIGHT);
 		lblVersion.setFont(SWTResourceManager.getFont("Arial", 11, SWT.NORMAL));
 		lblVersion.setBounds(662, 29, 100, 25);
-		lblVersion.setText("version 1.0.0.1");
+		lblVersion.setText(Constants.versionString);
 		if (! isMac)
 		{
 			lblVersion.setFont(SWTResourceManager.getFont("Arial", 10, SWT.NORMAL));
@@ -355,17 +859,6 @@ public class MultiRegionExporterForCubase implements UserInterface
 				loadAudioFile();
 			}
 		});
-		//Listen for Enter on widgets on mac, since it doesn't work automatically here
-		btnLoadAudioFile.addTraverseListener(new TraverseListener() 
-		{
-			public void keyTraversed(TraverseEvent e) 
-			{
-				if (e.detail == SWT.TRAVERSE_RETURN && isMac) 
-				{
-					loadAudioFile();
-				}
-			}
-		});
 		btnLoadAudioFile.setBounds(30, 115, 131, 54);
 		btnLoadAudioFile.setText("Load audio file");
 		
@@ -383,17 +876,6 @@ public class MultiRegionExporterForCubase implements UserInterface
 				loadTrackFile();
 			}
 		});
-		//Listen for Enter on widgets on mac, since it doesn't work automatically here
-		btnLoadTrackFile.addTraverseListener(new TraverseListener() 
-		{
-			public void keyTraversed(TraverseEvent e) 
-			{
-				if (e.detail == SWT.TRAVERSE_RETURN && isMac) 
-				{
-					loadTrackFile();
-				}
-			}
-		});
 		btnLoadTrackFile.setBounds(30, 253, 131, 54);
 		btnLoadTrackFile.setText("Load Cubase\r\ntrack file (.xml)");
 		
@@ -409,16 +891,6 @@ public class MultiRegionExporterForCubase implements UserInterface
 			public void widgetSelected(SelectionEvent e) 
 			{
 				outputFilesToFolder();
-			}
-		});
-		btnOutputFiles.addTraverseListener(new TraverseListener() 
-		{
-			public void keyTraversed(TraverseEvent e) 
-			{
-				if (e.detail == SWT.TRAVERSE_RETURN && isMac) 
-				{
-					outputFilesToFolder();
-				}
 			}
 		});
 		btnOutputFiles.setText("Output audio\nfiles to folder");
@@ -513,33 +985,36 @@ public class MultiRegionExporterForCubase implements UserInterface
 		});
 		mntmOnlineDocumentation.setText("Online Documentation");
 		
-		MenuItem mntmLocalDocumentation = new MenuItem(helpMenu, SWT.NONE);
-		mntmLocalDocumentation.addSelectionListener(new SelectionAdapter() 
+		if (! isMac) //	Desktop.getDesktop().open() apparently doesn't work in bundled OS X App anymore, so only add link to local documentation on Windows
 		{
-			@Override
-			public void widgetSelected(SelectionEvent e) 
+			MenuItem mntmLocalDocumentation = new MenuItem(helpMenu, SWT.NONE);
+			mntmLocalDocumentation.addSelectionListener(new SelectionAdapter() 
 			{
-				
-			        try 
-			        {
-			        	Desktop.getDesktop().open(localDocumentationFile);
-			        } 
-			        catch (Exception ex) 
-			        {
-			            ex.printStackTrace();
-			        }
-			    
-			}
-		});
-		mntmLocalDocumentation.setText("Local Documentation");
+				@Override
+				public void widgetSelected(SelectionEvent e) 
+				{
+					
+				        try 
+				        {
+				        	Desktop.getDesktop().open(localDocumentationFile);
+				        } 
+				        catch (Exception ex) 
+				        {
+				            ex.printStackTrace();
+				        }
+				    
+				}
+			});
+			mntmLocalDocumentation.setText("Local Documentation");
+		}
 		
-		table_1 = new Table(shell, SWT.BORDER | SWT.FULL_SELECTION | SWT.NO_SCROLL | SWT.V_SCROLL);
-		table_1.setToolTipText("Log window");
-		table_1.setHeaderVisible(true);
-		table_1.setLinesVisible(true);
-		table_1.setBounds(170, 542, 592, 173);
+		logWindowTable = new Table(shell, SWT.BORDER | SWT.FULL_SELECTION | SWT.NO_SCROLL | SWT.V_SCROLL);
+		logWindowTable.setToolTipText("Log window");
+		logWindowTable.setHeaderVisible(true);
+		logWindowTable.setLinesVisible(true);
+		logWindowTable.setBounds(170, 542, 592, 173);
 		
-		TableColumn tblclmnMessage = new TableColumn(table_1, SWT.NONE);
+		TableColumn tblclmnMessage = new TableColumn(logWindowTable, SWT.NONE);
 		tblclmnMessage.setResizable(false);
 		tblclmnMessage.setWidth(588);
 		tblclmnMessage.setText("Log window");
@@ -552,28 +1027,17 @@ public class MultiRegionExporterForCubase implements UserInterface
 			@Override
 			public void widgetSelected(SelectionEvent e) 
 			{
-				table_1.clearAll();
-				table_1.setItemCount(0);
+				logWindowTable.clearAll();
+				logWindowTable.setItemCount(0);
 			}
 		});
-		btnClearLog.addTraverseListener(new TraverseListener() 
-		{
-			public void keyTraversed(TraverseEvent e) 
-			{
-				if (e.detail == SWT.TRAVERSE_RETURN && isMac) 
-				{
-					table_1.clearAll();
-					table_1.setItemCount(0);
-				}
-			}
-		});
-		btnClearLog.setBounds(665, 508, 94, 28);
+		btnClearLog.setBounds(68, 687, 94, 28);
 		btnClearLog.setText("Clear log");
 		
 		Group grpOptions = new Group(shell, SWT.NONE);
 		grpOptions.setFont(SWTResourceManager.getFont("Arial", 13, SWT.NORMAL));
 		grpOptions.setText("Options:");
-		grpOptions.setBounds(170, 341, 592, 151);
+		grpOptions.setBounds(170, 324, 592, 205);
 		if (! isMac)
 		{
 			grpOptions.setFont(SWTResourceManager.getFont("Arial", 11, SWT.NORMAL));
@@ -583,10 +1047,10 @@ public class MultiRegionExporterForCubase implements UserInterface
 		grpFileNaming.setFont(SWTResourceManager.getFont("Arial", 12, SWT.NORMAL));
 		grpFileNaming.setToolTipText("Choose how audio files should be named:\r\neither by the descriptions/names of the individual events\r\n(audio parts / cycle markers) in the track file (set in Cubase)\r\nor by a fixed name followed by an index number (from 1 to number of regions)");
 		grpFileNaming.setText("File naming:");
-		grpFileNaming.setBounds(20, 20, 330, 90);
+		grpFileNaming.setBounds(20, 10, 330, 90);
 		if (! isMac)
 		{
-			grpFileNaming.setBounds(20, 35, 330, 90);
+			grpFileNaming.setBounds(20, 25, 330, 90);
 			grpFileNaming.setFont(SWTResourceManager.getFont("Arial", 10, SWT.NORMAL));
 		}
 		
@@ -599,18 +1063,6 @@ public class MultiRegionExporterForCubase implements UserInterface
 			{
 				txtFixedName.setEnabled(false);
 				setUseCubaseNames();
-			}
-		});
-		btnUseCubaseNamesdescriptions.addTraverseListener(new TraverseListener() 
-		{
-			public void keyTraversed(TraverseEvent e) 
-			{
-				if (e.detail == SWT.TRAVERSE_RETURN && isMac) 
-				{
-					btnUseCubaseNamesdescriptions.setSelection(true);
-					txtFixedName.setEnabled(false);
-					setUseCubaseNames();
-				}
 			}
 		});
 		btnUseCubaseNamesdescriptions.setSelection(true);
@@ -632,18 +1084,6 @@ public class MultiRegionExporterForCubase implements UserInterface
 			{
 				txtFixedName.setEnabled(true);
 				setUseFixedName(txtFixedName.getText());
-			}
-		});
-		btnUseFixedName.addTraverseListener(new TraverseListener() 
-		{
-			public void keyTraversed(TraverseEvent e) 
-			{
-				if (e.detail == SWT.TRAVERSE_RETURN && isMac) 
-				{
-					btnUseFixedName.setSelection(true);
-					txtFixedName.setEnabled(true);
-					setUseFixedName(txtFixedName.getText());
-				}
 			}
 		});
 		btnUseFixedName.setFont(SWTResourceManager.getFont("Arial", 11, SWT.NORMAL));
@@ -668,9 +1108,9 @@ public class MultiRegionExporterForCubase implements UserInterface
 		{
 			public void keyTraversed(TraverseEvent e) 
 			{
-				if (e.detail == SWT.TRAVERSE_RETURN && isMac) 
+				if (e.detail == SWT.TRAVERSE_RETURN) 
 				{
-					spinner.forceFocus();
+					shell.forceFocus();
 				}
 			}
 		});
@@ -686,60 +1126,192 @@ public class MultiRegionExporterForCubase implements UserInterface
 		
 		Group grpTrailingTime = new Group(grpOptions, SWT.NONE);
 		grpTrailingTime.setFont(SWTResourceManager.getFont("Arial", 12, SWT.NORMAL));
-		grpTrailingTime.setToolTipText("");
-		grpTrailingTime.setText("Trailing time");
-		grpTrailingTime.setBounds(367, 20, 201, 90);
+		grpTrailingTime.setText("Trailing time:");
+		grpTrailingTime.setBounds(367, 10, 201, 90);
 		grpTrailingTime.setToolTipText("The selected number of milliseconds is added to the end of each region.\r\nThis can be useful if, for example, you have added a reverb or delay effect to a track.");
 		if (! isMac)
 		{
-			grpTrailingTime.setBounds(367, 35, 201, 90);
+			grpTrailingTime.setBounds(367, 25, 201, 90);
 			grpTrailingTime.setFont(SWTResourceManager.getFont("Arial", 10, SWT.NORMAL));
 		}
 		
-		spinner = new Spinner(grpTrailingTime, SWT.BORDER);
-		spinner.setFont(SWTResourceManager.getFont("Arial", 11, SWT.NORMAL));
-		spinner.setToolTipText(grpTrailingTime.getToolTipText());
-		spinner.setMaximum(Integer.MAX_VALUE);
-		spinner.addModifyListener(new ModifyListener() 
+		Spinner trailingTimeSpinner = new Spinner(grpTrailingTime, SWT.BORDER);
+		trailingTimeSpinner.setFont(SWTResourceManager.getFont("Arial", 11, SWT.NORMAL));
+		trailingTimeSpinner.setToolTipText(grpTrailingTime.getToolTipText());
+		trailingTimeSpinner.setMaximum(Integer.MAX_VALUE);
+		trailingTimeSpinner.addModifyListener(new ModifyListener() 
 		{
 			public void modifyText(ModifyEvent e) 
 			{
-				engine.setTrailingTime((double)spinner.getSelection()/(double)1000);
+				engine.setTrailingTime((double)trailingTimeSpinner.getSelection()/(double)1000);
 			}
 		});
-		spinner.addTraverseListener(new TraverseListener() 
+		trailingTimeSpinner.addTraverseListener(new TraverseListener() 
 		{
 			public void keyTraversed(TraverseEvent e) 
 			{
 				if (e.detail == SWT.TRAVERSE_RETURN) 
 				{
-					if (btnOutputFiles.getEnabled())
-					{
-						btnOutputFiles.forceFocus();
-					}
-					else
-					{
-						shell.forceFocus();
-					}
+					shell.forceFocus();
 				}
 			}
 		});
-		spinner.setBounds(10, 20, 91, 22);
+		trailingTimeSpinner.setBounds(10, 20, 91, 22);
 		if (! isMac)
 		{
-			spinner.setFont(SWTResourceManager.getFont("Arial", 9, SWT.NORMAL));
-			spinner.setBounds(10, 36, 91, 22);
+			trailingTimeSpinner.setFont(SWTResourceManager.getFont("Arial", 9, SWT.NORMAL));
+			trailingTimeSpinner.setBounds(10, 36, 91, 22);
 		}
 		
 		Label lblMilliseconds = new Label(grpTrailingTime, SWT.NONE);
 		lblMilliseconds.setFont(SWTResourceManager.getFont("Arial", 11, SWT.NORMAL));
 		lblMilliseconds.setBounds(108, 26, 79, 14);
-		lblMilliseconds.setText("milliseconds");
+		lblMilliseconds.setText("Milliseconds");
 		if (! isMac)
 		{
 			lblMilliseconds.setBounds(108, 42, 79, 14);
 			lblMilliseconds.setFont(SWTResourceManager.getFont("Arial", 9, SWT.NORMAL));
 		}
+		
+		Group grpConversion = new Group(grpOptions, SWT.NONE);
+		grpConversion.setFont(SWTResourceManager.getFont("Arial", 12, SWT.NORMAL));
+		grpConversion.setToolTipText("Settings for optional conversion to mp3");
+		grpConversion.setText("Conversion:");
+		grpConversion.setBounds(20, 105, 548, 67);
+		if (! isMac)
+		{
+			grpConversion.setBounds(20, 125, 548, 67);
+			grpConversion.setFont(SWTResourceManager.getFont("Arial", 10, SWT.NORMAL));
+		}
+		
+	
+		
+		comboBitrateConstant = new Combo(grpConversion, SWT.READ_ONLY);
+		comboBitrateConstant.setItems(new String[] {"8 kbit/s", "16  kbit/s", "24  kbit/s", "32 kbit/s", "40  kbit/s", "48 kbit/s", "64 kbit/s", "80 kbit/s", "96 kbit/s", "112 kbit/s", "128 kbit/s", "160 kbit/s", "192 kbit/s", "224 kbit/s", "256 kbit/s", "320 kbit/s"});
+		comboBitrateConstant.setBounds(300, 11, 110, 22);
+		comboBitrateConstant.setFont(SWTResourceManager.getFont("Arial", 11, SWT.NORMAL));
+		comboBitrateConstant.setToolTipText("Choose constant bitrate for mp3 conversion");
+		comboBitrateConstant.select(12);
+		if (! isMac)
+		{
+			comboBitrateConstant.setFont(SWTResourceManager.getFont("Arial", 9, SWT.NORMAL));
+			comboBitrateConstant.setBounds(300, 26, 110, 22);
+		}
+		comboBitrateConstant.addSelectionListener(new SelectionAdapter() 
+		{
+			@Override
+			public void widgetSelected(SelectionEvent e) 
+			{
+				sendMp3ConversionArgToEngine();
+			}
+		});
+		
+		
+		comboBitrateVariable = new Combo(grpConversion, SWT.READ_ONLY);
+		comboBitrateVariable.setItems(new String[] {"65 kbit/s (avg)", "85 kbit/s (avg)", "100 kbit/s (avg)", "115 kbit/s (avg)", "130 kbit/s (avg)", "165 kbit/s (avg)", "175 kbit/s (avg)", "190 kbit/s (avg)", "225 kbit/s (avg)", "245 kbit/s (avg)"});
+		comboBitrateVariable.setBounds(300, 11, 120, 22);
+		comboBitrateVariable.setFont(SWTResourceManager.getFont("Arial", 11, SWT.NORMAL));
+		comboBitrateVariable.setToolTipText("Choose average bitrate (variable) for mp3 conversion");
+		comboBitrateVariable.select(7);
+		if (! isMac)
+		{
+			comboBitrateVariable.setFont(SWTResourceManager.getFont("Arial", 9, SWT.NORMAL));
+			comboBitrateVariable.setBounds(300, 26, 120, 22);
+		}
+		comboBitrateVariable.addSelectionListener(new SelectionAdapter() 
+		{
+			@Override
+			public void widgetSelected(SelectionEvent e) 
+			{
+				sendMp3ConversionArgToEngine();
+			}
+		});
+		
+		
+		comboConstantVariableBitrate = new Combo(grpConversion, SWT.READ_ONLY);
+		comboConstantVariableBitrate.setItems(new String[] {"Constant bit rate", "Variable bit rate"});
+		comboConstantVariableBitrate.setBounds(140, 11, 120, 22);
+		comboConstantVariableBitrate.setFont(SWTResourceManager.getFont("Arial", 11, SWT.NORMAL));
+		comboConstantVariableBitrate.setToolTipText("Choose between constant or variable bitrate for mp3 conversion");
+		comboConstantVariableBitrate.select(0);
+		if (! isMac)
+		{
+			comboConstantVariableBitrate.setFont(SWTResourceManager.getFont("Arial", 9, SWT.NORMAL));
+			comboConstantVariableBitrate.setBounds(140, 26, 120, 22);
+		}
+		comboConstantVariableBitrate.addSelectionListener(new SelectionAdapter() 
+		{
+			@Override
+			public void widgetSelected(SelectionEvent e) 
+			{
+				int selected = comboConstantVariableBitrate.getSelectionIndex();
+				if (selected == 0)
+				{
+					comboBitrateVariable.setVisible(false);
+					comboBitrateConstant.setVisible(true);
+				}
+				else
+				{
+					comboBitrateVariable.setVisible(true);
+					comboBitrateConstant.setVisible(false);
+				}
+				sendMp3ConversionArgToEngine();
+			}
+		});
+		
+	
+		
+		
+		//Set mp3 options to disabled on start
+		comboBitrateVariable.setEnabled(false);
+		comboBitrateConstant.setEnabled(false);
+		comboConstantVariableBitrate.setEnabled(false);
+		
+		//Set variable bitrate selector to hidden on start
+		comboBitrateVariable.setVisible(false);
+		
+		Button btnCheckConvertToMp3 = new Button(grpConversion, SWT.CHECK);
+		btnCheckConvertToMp3.setFont(SWTResourceManager.getFont("Arial", 11, SWT.NORMAL));
+		btnCheckConvertToMp3.setBounds(10, 10, 110, 18);
+		btnCheckConvertToMp3.setText("Convert to mp3");
+		btnCheckConvertToMp3.setToolTipText("Choose whether the output files should be converted to mp3 after extraction");
+		grpConversion.setTabList(new Control[]{btnCheckConvertToMp3, comboConstantVariableBitrate, comboBitrateVariable, comboBitrateConstant});
+		if (! isMac)
+		{
+			btnCheckConvertToMp3.setFont(SWTResourceManager.getFont("Arial", 9, SWT.NORMAL));
+			btnCheckConvertToMp3.setBounds(10, 26, 110, 18);
+		}
+		btnCheckConvertToMp3.addSelectionListener(new SelectionAdapter() 
+		{
+			@Override
+			public void widgetSelected(SelectionEvent e) 
+			{
+				boolean checked = btnCheckConvertToMp3.getSelection();
+				comboBitrateVariable.setEnabled(checked);
+				comboBitrateConstant.setEnabled(checked);
+				comboConstantVariableBitrate.setEnabled(checked);
+				sendMp3ConversionArgToEngine();
+				engine.setConvertToMp3(checked);
+			}
+		});
+		btnCheckConvertToMp3.addTraverseListener(new TraverseListener() 
+		{
+			public void keyTraversed(TraverseEvent e) 
+			{
+				if (e.detail == SWT.TRAVERSE_RETURN) 
+				{
+					btnCheckConvertToMp3.setSelection(!btnCheckConvertToMp3.getSelection());
+					boolean checked = btnCheckConvertToMp3.getSelection();
+					comboBitrateVariable.setEnabled(checked);
+					comboBitrateConstant.setEnabled(checked);
+					comboConstantVariableBitrate.setEnabled(checked);
+					sendMp3ConversionArgToEngine();
+					engine.setConvertToMp3(checked);
+				}
+			}
+		});
+		
+		
 		
 		waveformLabel = new Label(shell, SWT.NONE);
 		waveformLabel.setToolTipText("Waveform and region preview. \r\nNote that the visual waveform and region markers are not 100% accurate\r\n- they are only approximations. \r\nThe actual export will be precise and, where possible, lossless.");
@@ -747,512 +1319,43 @@ public class MultiRegionExporterForCubase implements UserInterface
 		{
 			public void paintControl(PaintEvent e) 
 			{
-				
-				if (currentWaveformData != null)
+				GC gc = e.gc;
+				if ((currentWaveformPng != null) && (!currentWaveformPng.isEmpty()))
 				{
-					GC gc = e.gc;
-					
-					int halfHeight = (int)(waveformLabel.getBounds().height * 0.5);
-					for (int i = 0; i < currentWaveformData.length; i++)
-					{
-						gc.drawLine(i, (int)(currentWaveformData[i][0] * halfHeight + halfHeight), i, (int)(currentWaveformData[i][1]* halfHeight + halfHeight));
-					}
-					if (rangeMarkers != null)
-					{
-						Color prevBackgroundColor = gc.getBackground();
-						int prevGCAplha = gc.getAlpha();
-						gc.setBackground(rangeMarkerColor);
-						gc.setAlpha(rangeMarkerAlpha);
-						for (int i = 0; i < rangeMarkers.length; i++)
-						{
-							gc.fillRectangle(rangeMarkers[i]);
-						}
-						gc.setBackground(prevBackgroundColor);
-						gc.setAlpha(prevGCAplha);
-					}
-					
+					Image image = new Image(display,currentWaveformPng);
+					gc.drawImage(image, 0,0);
+					image.dispose();
 				}
+				if ((generatingWaveformText != null) &&  (!generatingWaveformText.isEmpty()))
+				{
+					gc.setFont(SWTResourceManager.getFont("Arial", 14, SWT.NORMAL));
+					int textWidth = gc.stringExtent(generatingWaveformText).x;
+					int textHeight = gc.stringExtent(generatingWaveformText).y;
+					int xPos = (waveformLabel.getBounds().width / 2) - (textWidth / 2);
+					int yPos = (waveformLabel.getBounds().height / 2) - (textHeight / 2);
+					gc.drawText(generatingWaveformText, xPos, yPos, true);
+				}
+				if (rangeMarkers != null)
+				{
+					Color prevBackgroundColor = gc.getBackground();
+					int prevGCAplha = gc.getAlpha();
+					gc.setBackground(rangeMarkerColor);
+					gc.setAlpha(rangeMarkerAlpha);
+					for (int i = 0; i < rangeMarkers.length; i++)
+					{
+						gc.fillRectangle(rangeMarkers[i]);
+					}
+					gc.setBackground(prevBackgroundColor);
+					gc.setAlpha(prevGCAplha);
+				}
+				gc.dispose();
 			}
 		});
 		waveformLabel.setBackground(SWTResourceManager.getColor(SWT.COLOR_WIDGET_NORMAL_SHADOW));
 		waveformLabel.setBounds(172, 176, 590, 71);
 		
 		shell.setImage(SWTResourceManager.getImage(MultiRegionExporterForCubase.class, "/Assets/Logo256.png"));
-		shell.setTabList(new Control[]{btnLoadAudioFile, btnLoadTrackFile, btnOutputFiles, grpOptions, btnClearLog, grpAudioFile, grpTrackFile, table_1});
-		
-	}
-	
-	/**
-	 * Do some startup setting up
-	 */
-	private void setup()
-	{
-		btnOutputFiles.setEnabled(false);
-		btnLoadTrackFile.setEnabled(false);
-		lblgeneratingWaveform.setVisible(false);
-		setPaths();
-		engine.setWaveformWidth(waveformLabel.getBounds().width);
-		clearAudioFile();
-		lblTrackFileName.setText("none");
-		setUseCubaseNames();
-		
-	}
-	
-	/**
-	 * Set up the different paths. Calculated from paths relative to jar file.
-	 */
-	private void setPaths()
-	{
-		//Calculate paths
-		if (isMac)
-		{
-			String pathToContentsFolder = Utils.getJarPath(2);
-			String fileSeparator = Utils.getFileSeparator();
-			pathToSox = pathToContentsFolder + fileSeparator + "sox" + fileSeparator + "sox";
-			pathToSoxi = pathToContentsFolder + fileSeparator + "sox" + fileSeparator + "soxi";
-			pathToWaveform = pathToContentsFolder + fileSeparator + "waveform" + fileSeparator + "waveform.wav";
-			pathToLocalDocumentation = pathToContentsFolder + fileSeparator + "documentation" + fileSeparator + "documentation.pdf";
-		}
-		else
-		{
-			String pathToMainFolder = Utils.getJarPath(1);
-			String fileSeparator = Utils.getFileSeparator();
-			String pathToResourcesFolder = pathToMainFolder + fileSeparator + "resources";
-			
-			pathToSox = pathToResourcesFolder +fileSeparator + "sox" + fileSeparator + "sox";
-			pathToSoxi = pathToResourcesFolder + fileSeparator + "sox" + fileSeparator + "soxi";
-			pathToWaveform = pathToResourcesFolder + fileSeparator + "waveform" + fileSeparator + "waveform.wav";
-			pathToLocalDocumentation = pathToMainFolder + fileSeparator + "documentation" + fileSeparator + "documentation.pdf";
-		}
-		pathToOnlineDocumentation = "http://jakobhandersen.dk/projects/multi-region-exporter/documentation/";
-		
-		//Set paths
-		engine.setSoxPath(pathToSox);
-		engine.setSoxiPath(pathToSoxi);
-		engine.setWaveformFileName(pathToWaveform);
-		localDocumentationFile = new File(pathToLocalDocumentation);
-		
-	}
-	
-	/**
-	 * Clear info on currently loaded audio file
-	 */
-	private void clearAudioFile()
-	{
-		//Clear text related to audio file
-		lblAudioFileName.setText("none");
-		lblAudioFileInfo.setText("");
-		
-		//clear waveform
-		lblgeneratingWaveform.setVisible(false);
-		display.timerExec(-1, generatingWaveformTextTimer);
-		currentWaveformData = null;
-		waveformLabel.redraw();
-		
-		//clear currentInputAudioFile
-		currentInputAudioFile = null;
-		
-	}
-	
-	/**
-	 * Tell engine to use Cubase names
-	 */
-	private void setUseCubaseNames()
-	{
-		engine.useCubaseNames();
-	}
-	
-	/**
-	 * Tell engine to use fixed name
-	 * @param s the name to use
-	 */
-	private void setUseFixedName(String s)
-	{
-		engine.useFixedName(s);
-	}
-	
-	
-	/**
-	 * Called when load audio file button is pressed
-	 */
-	private void loadAudioFile()
-	{
-		FileDialog fd = new FileDialog(shell, SWT.OPEN);
-        fd.setText("Load an audio file");
-        String selected = fd.open();
-        if (selected != null)
-        {
-        	engine.readInputAudioFile(selected);
-        }
-	}
-	
-	/**
-	 * Called when the load track file button is pressed
-	 */
-	private void loadTrackFile()
-	{
-		FileDialog fd = new FileDialog(shell, SWT.OPEN);
-        fd.setText("Load a Cubase track file (.xml)");
-        String[] filterExt = {"*.xml"};
-        fd.setFilterExtensions(filterExt);
-        String selected = fd.open();
-        if (selected != null)
-        {
-        	this.lastLoadedXmlFileName = selected;
-        	engine.readXML(selected);
-        }
-	}
-	
-	/**
-	 * Called when the output files button is pressed
-	 */
-	private void outputFilesToFolder()
-	{
-		DirectoryDialog dd = new DirectoryDialog(shell, SWT.SAVE);
-        dd.setText("Choose where to put the audio files");
-        String selected = dd.open();
-        if (selected != null)
-        {
-        	engine.setOutputFolder(selected);
-        }
-	}
-	
-	/**
-	 * Show the About dialog
-	 */
-	private void showAbout()
-	{
-		AboutDialog d = new AboutDialog(shell, SWT.APPLICATION_MODAL);
-		d.open();
-	}
-
-	@Override
-	public void receiveEvent(EngineEvent e) 
-	{
-		Display.getDefault().syncExec(new Runnable() 
-		{
-		    public void run() 
-		    {
-				switch(e)
-				{
-				case CLEAR_AUDIO_FILE:
-					clearAudioFile();
-					break;
-					
-				case READY_FOR_XML:
-					btnLoadTrackFile.setEnabled(true);
-					btnLoadTrackFile.forceFocus();
-					break;
-					
-				case NOT_READY_FOR_XML:
-					btnLoadTrackFile.setEnabled(false);
-					break;
-					
-				case READY_FOR_SPLIT:
-					btnOutputFiles.setEnabled(true);
-					btnOutputFiles.forceFocus();
-					lblTrackFileName.setText(lastLoadedXmlFileName);
-					break;
-					
-				case NOT_READY_FOR_SPLIT:
-					btnOutputFiles.setEnabled(false);
-					lblTrackFileName.setText("none");
-					break;
-					
-				case READING_AUDIO_FILE:
-					btnLoadAudioFile.setEnabled(false);
-					shell.setCursor(new Cursor(display, SWT.CURSOR_WAIT));
-					break;
-					
-				case ERROR_READING_AUDIO_FILE:
-					shell.setCursor(new Cursor(display, SWT.CURSOR_ARROW));
-					btnLoadAudioFile.setEnabled(true);
-					btnLoadAudioFile.forceFocus();
-					break;
-					
-				case GENERATING_WAVEFORM:
-					lblgeneratingWaveform.setVisible(true);
-					display.timerExec(0, generatingWaveformTextTimer);
-					break;
-					
-				case DONE_GENERATING_WAVEFORM:
-					lblgeneratingWaveform.setVisible(false);
-					display.timerExec(-1, generatingWaveformTextTimer);
-					break;
-					
-				case FILES_TO_BE_OVERWRITTEN:
-					doOverwriteDialog();
-					break;
-					
-				case INPUT_FILE_TO_BE_OVERWRITTEN:
-					doInputFileOverwriteErrorDialog();
-					break;
-					
-				case OUTPUTTING_FILES:
-					startOutputtingFiles();
-					break;
-					
-				case DONE_OUTPUTTING_FILES:
-					stopOutputtingFiles();
-					break;
-					
-					default:
-						break;
-				}
-		    }
-		});
-		
-	}
-
-	@Override
-	public void sendMessageToUser(UserMessageType type, String message) 
-	{
-		Display.getDefault().syncExec(new Runnable() 
-		{
-		    public void run() 
-		    {
-		    	//Non-wrapped solution
-				/*TableItem tableItem = new TableItem(table_1, SWT.NONE);
-				tableItem.setText(getStartStringForUserMessageType(type) + message);
-				tableItem.setForeground(getColorForUserMessageType(type));
-				table_1.showItem(tableItem);*/
-				
-				//Wrapped text solution
-				List<String> splitStrings = getWrappedString(getStartStringForUserMessageType(type) + message,573,table_1);
-				for (int i = 0; i < splitStrings.size(); i++)
-				{
-					TableItem tableItem = new TableItem(table_1, SWT.NONE);
-					tableItem.setText(splitStrings.get(i));
-					tableItem.setForeground(getColorForUserMessageType(type));
-					table_1.showItem(tableItem);
-				}
-		    }
-		});
-		
-	}
-
-	@Override
-	public void audioFileRead(InputAudioFile f) 
-	{
-		Display.getDefault().syncExec(new Runnable() 
-		{
-		    public void run() 
-		    {
-		    	shell.setCursor(new Cursor(display, SWT.CURSOR_ARROW));
-		    	currentInputAudioFile = f;
-		    	btnLoadAudioFile.setEnabled(true);
-		    	lblAudioFileName.setText(f.getFilename());
-		    	lblAudioFileInfo.setText(f.getInfoString());
-		    }
-		});
-		
-	}
-	
-
-	@Override
-	public void setRangeMarkers(List<AudioBite> bites) 
-	{
-		Display.getDefault().syncExec(new Runnable() 
-		{
-		    public void run() 
-		    {
-		    	if (currentInputAudioFile != null)
-		    	{
-			    	rangeMarkers = new Rectangle[bites.size()];
-			    	int waveformWidth = waveformLabel.getBounds().width;
-		    		int waveformHeight = waveformLabel.getBounds().height;
-			    	for (int i = 0; i < bites.size(); i++)
-			    	{
-			    		AudioBite b = bites.get(i);
-			    		double startFraction = b.getStart() / currentInputAudioFile.getLength();
-			    		double lengthFraction = (b.getFunctionalEnd() - b.getStart()) / currentInputAudioFile.getLength();
-			    		rangeMarkers[i] = new Rectangle((int)(startFraction * waveformWidth),0,(int)(lengthFraction * waveformWidth),waveformHeight);
-			    	}
-		    	}
-		    	else
-		    	{
-		    		Debug.log("Error: Can't set range markers since currentInputAudioFile == null");
-		    		rangeMarkers = null;
-		    	}
-		    	waveformLabel.redraw();
-		    }
-		});
-		
-	}
-
-	@Override
-	public void deleteRangeMarkers() 
-	{
-		Display.getDefault().syncExec(new Runnable() 
-		{
-		    public void run() 
-		    {
-		    	rangeMarkers = null;
-		    	waveformLabel.redraw();
-		    }
-		});
-	}
-	
-	/**
-	 * Do things when outputting files
-	 */
-	private void startOutputtingFiles()
-	{
-		shell.setCursor(new Cursor(display, SWT.CURSOR_WAIT));
-		btnLoadAudioFile.setEnabled(false);
-		btnLoadTrackFile.setEnabled(false);
-		btnOutputFiles.setEnabled(false);
-	}
-	
-	
-	/**
-	 * Stop doing things when outputting files
-	 */
-	private void stopOutputtingFiles()
-	{
-		shell.setCursor(new Cursor(display, SWT.CURSOR_ARROW));
-		btnLoadAudioFile.setEnabled(true);
-		btnLoadTrackFile.setEnabled(true);
-		btnOutputFiles.setEnabled(true);
-	}
-	
-	/**
-	 * Show overwrite files dialog 
-	 */
-	private void doOverwriteDialog()
-	{
-		MessageBox messageDialog = new MessageBox(shell, 
-			        SWT.ICON_QUESTION | 
-			        SWT.OK
-			        | SWT.CANCEL);
-	    messageDialog.setText("Overwrite files");
-	    messageDialog.setMessage("One or more of the files about to be created share the name of a file already existing in the specified output folder.\n\nDo you want to overwrite these files.");
-	    int returnCode = messageDialog.open();
-	    if (returnCode == 32)//ok
-	    {
-	    	Debug.log("Overwrite accepted");
-	    	engine.createFilesOverwriteAccepted();
-	    }
-	    else
-	    {
-	    	Debug.log("Overwrite canceled");
-	    }
-	}
-	
-	/**
-	 * Show dialog when trying to overwrite input audio file
-	 */
-	private void doInputFileOverwriteErrorDialog()
-	{
-		MessageBox messageDialog = new MessageBox(shell, 
-		        SWT.ICON_ERROR | 
-		        SWT.OK);
-	    messageDialog.setText("Error outputting files");
-	    messageDialog.setMessage("Outputting to the specified folder would overwrite the loaded input audio file since it shares the name of one of the files to be extracted. This is not allowed / possible. Select another output folder or change file naming settings.");
-	    messageDialog.open();
-	}
-	
-	/**
-	 * Get relevant start string for user message of type t
-	 * @param t 
-	 * @return 
-	 */
-	private String getStartStringForUserMessageType(UserMessageType t)
-	{
-		String ret = "";
-		switch (t)
-		{
-		case ERROR:
-			ret = "ERROR: ";
-			break;
-			
-		case WARNING:
-			ret = "WARNING: ";
-		
-			default: break;
-		}
-		return ret;
-	}
-	
-	/**
-	 * Get relevant color of user message of type t
-	 * @param t
-	 * @return
-	 */
-	private Color getColorForUserMessageType(UserMessageType t)
-	{
-		Color ret = SWTResourceManager.getColor(SWT.COLOR_BLACK);
-		switch (t)
-		{
-		case ERROR:
-			ret = SWTResourceManager.getColor(SWT.COLOR_DARK_RED);
-			break;
-			
-		case WARNING:
-			ret = SWTResourceManager.getColor(SWT.COLOR_DARK_BLUE);
-			break;
-			
-		case SUCCESS:
-			ret = SWTResourceManager.getColor(SWT.COLOR_DARK_GREEN);
-			break;
-		
-			default: break;
-		}
-		return ret;
-	}
-	
-	/**
-	 * Returns wrapped string (List<String>)
-	 * @param fullString
-	 * @param maxWidth
-	 * @param control
-	 * @return
-	 */
-	private List<String> getWrappedString(String fullString,int maxWidth, Control control)
-	{
-		GC gc = new GC(control);
-		int stringWidth = gc.stringExtent(fullString).x;
-		List<String> splitStrings = new ArrayList<String>();
-		if (stringWidth <= maxWidth)
-		{
-			splitStrings.add(fullString);
-			return splitStrings;
-		}
-		String restString = fullString;
-		int restStringWidth = stringWidth;
-		while (restStringWidth > maxWidth)
-		{
-			String biteFromRest;
-			String restFromRest;
-			int startI = restString.length()-1;
-			for (int i = startI; i > 0; i--)
-			{
-				biteFromRest = restString.substring(0,i);
-				restFromRest = restString.substring(i);
-				if (gc.stringExtent(biteFromRest).x <= maxWidth)
-				{
-					splitStrings.add(biteFromRest);
-					restString = restFromRest;
-					restStringWidth = gc.stringExtent(restString).x;
-					break;
-				}
-			}
-		}
-		splitStrings.add(restString);
-		return splitStrings;
-	}
-
-	@Override
-	public void waveformCreated(double[][] waveformData) 
-	{
-		Display.getDefault().syncExec(new Runnable() 
-		{
-		    public void run() 
-		    {
-		    	currentWaveformData = waveformData;
-		    	waveformLabel.redraw();
-		    }
-		});
+		shell.setTabList(new Control[]{btnLoadAudioFile, btnLoadTrackFile, btnOutputFiles, grpOptions, logWindowTable, btnClearLog, grpAudioFile, grpTrackFile});
 		
 	}
 }

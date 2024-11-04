@@ -1,5 +1,5 @@
 //    Multi-region Exporter - for Cubase
-//    Copyright (C) 2016 Jakob Hougaard Andsersen
+//    Copyright (C) 2017 Jakob Hougaard Andsersen
 //
 //    This program is free software: you can redistribute it and/or modify
 //    it under the terms of the GNU General Public License as published by
@@ -35,7 +35,7 @@ public class InputAudioFile
 	private String fileExtension;
 	
 	/**
-	 * Lenght in seconds
+	 * Length in seconds
 	 */
 	private double length;
 	
@@ -60,6 +60,17 @@ public class InputAudioFile
 	private boolean isValid;
 	
 	/**
+	 * Constructor with minimum initializing
+	 * @param fileName
+	 * @param isValid
+	 */
+	public InputAudioFile(String fileName, boolean isValid)
+	{
+		this.isValid = isValid;
+		this.filename = fileName;
+	}
+	
+	/**
 	 * Constructor
 	 * @param filename
 	 * @param length
@@ -80,38 +91,11 @@ public class InputAudioFile
 	}
 	
 	/**
-	 * Constructor with minimum initializing
-	 * @param fileName
-	 * @param isValid
-	 */
-	public InputAudioFile(String fileName, boolean isValid)
-	{
-		this.isValid = isValid;
-		this.filename = fileName;
-	}
-	
-	/**
 	 * @return
 	 */
-	public String getFilename()
+	public int getBitDepth()
 	{
-		return filename;
-	}
-	
-	/**
-	 * @return
-	 */
-	public double getLength()
-	{
-		return length;
-	}
-	
-	/**
-	 * @return
-	 */
-	public String getFileExtension()
-	{
-		return fileExtension;
+		return bitDepth;
 	}
 	
 	/**
@@ -125,42 +109,17 @@ public class InputAudioFile
 	/**
 	 * @return
 	 */
-	public int getBitDepth()
+	public String getFileExtension()
 	{
-		return bitDepth;
+		return fileExtension;
 	}
 	
 	/**
 	 * @return
 	 */
-	public float getSampleRate()
+	public String getFilename()
 	{
-		return sampleRate;
-	}
-	
-	/**
-	 * Extract the file extension of a given file name
-	 * @param fileName
-	 * @return
-	 */
-	private  String getFileExtension(String fileName) 
-	{
-        if(fileName.lastIndexOf(".") != -1 && fileName.lastIndexOf(".") != 0)
-        {
-        	return fileName.substring(fileName.lastIndexOf(".")+1);
-        }
-        else 
-        {
-        	return "";
-        }
-    }
-	
-	/**
-	 * @return
-	 */
-	public boolean getIsValid()
-	{
-		return isValid;
+		return filename;
 	}
 	
 	/**
@@ -202,6 +161,47 @@ public class InputAudioFile
 		
 		return "channels: "+channelsStr+", length: "+lengthStr+", sample rate: "+sampleRateStr+", bit depth: "+bitDepthStr;
 	}
+	
+	/**
+	 * @return
+	 */
+	public boolean getIsValid()
+	{
+		return isValid;
+	}
+	
+	/**
+	 * @return
+	 */
+	public double getLength()
+	{
+		return length;
+	}
+	
+	/**
+	 * @return
+	 */
+	public float getSampleRate()
+	{
+		return sampleRate;
+	}
+	
+	/**
+	 * Extract the file extension of a given file name
+	 * @param fileName
+	 * @return
+	 */
+	private  String getFileExtension(String fileName) 
+	{
+        if(fileName.lastIndexOf(".") != -1 && fileName.lastIndexOf(".") != 0)
+        {
+        	return fileName.substring(fileName.lastIndexOf(".")+1);
+        }
+        else 
+        {
+        	return "";
+        }
+    }
 	
 	/**
 	 * @return a string with the length formatted as hours, minutes and seconds

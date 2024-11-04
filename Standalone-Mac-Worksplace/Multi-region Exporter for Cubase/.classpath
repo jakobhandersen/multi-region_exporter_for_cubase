@@ -3,13 +3,6 @@
 	<classpathentry kind="src" path="src"/>
 	<classpathentry combineaccessrules="false" kind="src" path="/org.eclipse.swt"/>
 	<classpathentry kind="lib" path="Assets/Assets.zip"/>
-	<classpathentry kind="lib" path="/Users/Jakob/.p2/pool/plugins/org.eclipse.core.databinding_1.5.0.v20150422-0725.jar" sourcepath="/Users/Jakob/.p2/pool/plugins/org.eclipse.core.databinding_1.5.0.v20150422-0725.jar"/>
-	<classpathentry kind="lib" path="/Users/Jakob/.p2/pool/plugins/org.eclipse.core.databinding.beans_1.3.0.v20150422-0725.jar" sourcepath="/Users/Jakob/.p2/pool/plugins/org.eclipse.core.databinding.beans_1.3.0.v20150422-0725.jar"/>
-	<classpathentry kind="lib" path="/Users/Jakob/.p2/pool/plugins/org.eclipse.core.databinding.observable_1.5.0.v20150422-0725.jar" sourcepath="/Users/Jakob/.p2/pool/plugins/org.eclipse.core.databinding.observable_1.5.0.v20150422-0725.jar"/>
-	<classpathentry kind="lib" path="/Users/Jakob/.p2/pool/plugins/org.eclipse.core.databinding.property_1.5.0.v20150422-0725.jar" sourcepath="/Users/Jakob/.p2/pool/plugins/org.eclipse.core.databinding.property_1.5.0.v20150422-0725.jar"/>
-	<classpathentry kind="lib" path="/Users/Jakob/.p2/pool/plugins/org.eclipse.jface.databinding_1.7.0.v20150406-2148.jar" sourcepath="/Users/Jakob/.p2/pool/plugins/org.eclipse.jface.databinding_1.7.0.v20150406-2148.jar"/>
-	<classpathentry kind="lib" path="/Users/Jakob/.p2/pool/plugins/org.eclipse.equinox.common_3.7.0.v20150402-1709.jar" sourcepath="/Users/Jakob/.p2/pool/plugins/org.eclipse.equinox.common_3.7.0.v20150402-1709.jar"/>
-	<classpathentry kind="lib" path="/Users/Jakob/.p2/pool/plugins/com.ibm.icu_54.1.1.v201501272100.jar" sourcepath="/Users/Jakob/.p2/pool/plugins/com.ibm.icu_54.1.1.v201501272100.jar"/>
 	<classpathentry kind="con" path="org.eclipse.jdt.launching.JRE_CONTAINER"/>
 	<classpathentry kind="output" path="bin"/>
 </classpath>

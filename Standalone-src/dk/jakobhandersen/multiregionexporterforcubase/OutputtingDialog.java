@@ -1,5 +1,5 @@
 //    Multi-region Exporter - for Cubase
-//    Copyright (C) 2016 Jakob Hougaard Andsersen
+//    Copyright (C) 2017 Jakob Hougaard Andsersen
 //
 //    This program is free software: you can redistribute it and/or modify
 //    it under the terms of the GNU General Public License as published by
@@ -23,10 +23,10 @@ import org.eclipse.swt.graphics.Cursor;
 import org.eclipse.swt.graphics.Rectangle;
 import org.eclipse.swt.widgets.Label;
 import org.eclipse.wb.swt.SWTResourceManager;
+import org.eclipse.swt.widgets.ProgressBar;
 
 /**
  * SWT dialog - Showing that the application is busy outputting the files.
- * Not currently in use.
  * @author Jakob Hougaard Andersen
  *
  */
@@ -36,23 +36,10 @@ public class OutputtingDialog extends Dialog
 	protected Object result;
 	protected Shell shell;
 	private Display display;
-	private Label lblExpor;
-	private final int textTimerTime = 250;
-	private Runnable textTimer = new Runnable() 
-	{
-		int i = 0;
-		public void run() 
-		{
-			String dotString = "";
-			for (int j = 0; j < i; j++)
-			{
-				dotString += ".";
-			}
-			lblExpor.setText(dotString + "outputting files" + dotString);
-			i = (i + 1) % 4;
-	        display.timerExec(textTimerTime, this);
-		}
-	};
+	private Label lblHeader;
+	private ProgressBar progressBar;
+	private Label lblProcessText;
+
 
 	/**
 	 * Create the dialog.
@@ -66,6 +53,23 @@ public class OutputtingDialog extends Dialog
 	}
 
 	/**
+	 * Close the dialog
+	 */
+	public void close()
+	{
+		//Delay actual closing by 500ms in order to display full progress bar etc.
+		display.timerExec(500,
+				new Runnable()
+				{
+					public void run()
+					{
+						shell.close();
+					}
+				})
+		;
+	}
+	
+	/**
 	 * Open the dialog.
 	 * @return the result
 	 */
@@ -73,9 +77,12 @@ public class OutputtingDialog extends Dialog
 	{
 		display = getParent().getDisplay();
 		createContents();
+		
+		progressBar.setSelection(0);
+		lblProcessText.setText("");
+		
 		shell.open();
 		shell.layout();
-		display.timerExec(0, textTimer);
 		
 		while (!shell.isDisposed()) 
 		{
@@ -87,10 +94,36 @@ public class OutputtingDialog extends Dialog
 		return result;
 	}
 	
-	public void close()
+	/**
+	 * Set the text describing what the outputting process is doing right now
+	 * @param text shown in label below progress bar
+	 */
+	public void setProcessText(String text)
 	{
-		display.timerExec(-1, textTimer);
-		shell.close();
+		Display.getDefault().syncExec(new Runnable() 
+		{
+		    public void run() 
+		    {
+		    		lblProcessText.setText(text);
+		    }
+		});
+		
+	}
+	
+	
+	/**
+	 * Set the progress percentage of progress bar
+	 * @param percentage (0 to 100)
+	 */
+	public void setProgressPercentage(int percentage)
+	{
+		Display.getDefault().syncExec(new Runnable() 
+		{
+		    public void run() 
+		    {
+		    		progressBar.setSelection(percentage);
+		    }
+		});
 	}
 
 	/**
@@ -108,12 +141,23 @@ public class OutputtingDialog extends Dialog
 		shell.setLocation(xPos,yPos);
 		shell.setText(getText());
 		
-		lblExpor = new Label(shell, SWT.NONE);
-		lblExpor.setFont(SWTResourceManager.getFont("Arial", 18, SWT.NORMAL));
-		lblExpor.setAlignment(SWT.CENTER);
-		lblExpor.setBounds(0, 66, 450, 35);
-		lblExpor.setText("outputting files");
+		lblHeader = new Label(shell, SWT.NONE);
+		lblHeader.setFont(SWTResourceManager.getFont("Arial", 18, SWT.NORMAL));
+		lblHeader.setAlignment(SWT.CENTER);
+		lblHeader.setBounds(0, 30, 450, 35);
+		lblHeader.setText("Outputting files");
+		
+		
+		progressBar = new ProgressBar(shell, SWT.NONE);
+		progressBar.setBounds(33, 88, 377, 14);
+		
+		
+		
+		lblProcessText = new Label(shell, SWT.NONE);
+		lblProcessText.setAlignment(SWT.CENTER);
+		lblProcessText.setFont(SWTResourceManager.getFont("Arial", 12, SWT.NORMAL));
+		lblProcessText.setBounds(33, 115, 377, 25);
+		
 		shell.setCursor(new Cursor(display, SWT.CURSOR_WAIT));
-
 	}
 }

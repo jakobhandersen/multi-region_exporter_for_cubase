@@ -1,5 +1,5 @@
 //    Multi-region Exporter - for Cubase
-//    Copyright (C) 2016 Jakob Hougaard Andsersen
+//    Copyright (C) 2017 Jakob Hougaard Andsersen
 //
 //    This program is free software: you can redistribute it and/or modify
 //    it under the terms of the GNU General Public License as published by
@@ -107,12 +107,9 @@ public class CubaseTrackXMLSaxParseHandler extends DefaultHandler
 	
 	
 	@Override
-	public void startDocument()
+	public void characters(char ch[], int start, int length) throws SAXException 
 	{
-		audioBites = new ArrayList<AudioBite>();
-		audioClipIdNameMap = new HashMap<String,String>(0);
-		currentlySettingUpBite = null;
-		sampleRateSet = false;
+		
 	}
 	
 	@Override
@@ -129,6 +126,81 @@ public class CubaseTrackXMLSaxParseHandler extends DefaultHandler
 			Debug.log("Error: no sample rate set");
 		}
 	}
+	
+	@Override
+	public void endElement(String uri, String localName, String qName) throws SAXException 
+	{
+		if (currentlyParsingElement != ElementType.None)
+		{
+			if (subElementNodeLevel == 0)
+			{
+				//End parsing event
+				Debug.log("Ending parsing "+currentlyParsingElement.toString());
+				if ((currentlyParsingElement != ElementType.MAudioPart) && (currentlyParsingElement != ElementType.PAudioClip))
+				{
+					if (currentlySettingUpBite != null)
+					{
+						audioBites.add(currentlySettingUpBite);
+					}
+					currentlySettingUpBite = null;
+					currentlyParsingElement = ElementType.None;
+				}
+				//MAudioPart and PAudioClip are special cases
+				else
+				{
+					if (currentlyParsingElement == ElementType.MAudioPart)
+					{
+						currentlyParsingElement = ElementType.MAudioPartEvent;
+						subElementNodeLevel = 0;
+					}
+					else if (currentlyParsingElement == ElementType.PAudioClip)
+					{
+						currentlyParsingElement = ElementType.MAudioEvent;
+						subElementNodeLevel = 0;
+					}
+				}
+			}
+			else
+			{
+				subElementNodeLevel -= 1;
+			}
+		}
+		else if (domainMemberSubMemberLevel > 0)
+		{
+			if (qName.equalsIgnoreCase("member") )
+			{
+				domainMemberSubMemberLevel -= 1;
+			}
+		}
+	}
+	
+	/**
+	 * Gets the AudioBites resulting from the parsing
+	 * @return
+	 */
+	public List<AudioBite> getAudioBites()
+	{
+		return audioBites;
+	}
+	
+	/**
+	 * Returns the number of AudioBites that were renamed due to name equality
+	 * @return
+	 */
+	public int getNumRenamedAudioBites()
+	{
+		return numRenamedAudioBites;
+	}
+	
+	@Override
+	public void startDocument()
+	{
+		audioBites = new ArrayList<AudioBite>();
+		audioClipIdNameMap = new HashMap<String,String>(0);
+		currentlySettingUpBite = null;
+		sampleRateSet = false;
+	}
+	
 	
 	@Override
 	public void startElement(String uri, String localName, String qName, Attributes attributes) throws SAXException 
@@ -453,59 +525,6 @@ public class CubaseTrackXMLSaxParseHandler extends DefaultHandler
 		
 	}
 	
-	@Override
-	public void endElement(String uri, String localName, String qName) throws SAXException 
-	{
-		if (currentlyParsingElement != ElementType.None)
-		{
-			if (subElementNodeLevel == 0)
-			{
-				//End parsing event
-				Debug.log("Ending parsing "+currentlyParsingElement.toString());
-				if ((currentlyParsingElement != ElementType.MAudioPart) && (currentlyParsingElement != ElementType.PAudioClip))
-				{
-					if (currentlySettingUpBite != null)
-					{
-						audioBites.add(currentlySettingUpBite);
-					}
-					currentlySettingUpBite = null;
-					currentlyParsingElement = ElementType.None;
-				}
-				//MAudioPart and PAudioClip are special cases
-				else
-				{
-					if (currentlyParsingElement == ElementType.MAudioPart)
-					{
-						currentlyParsingElement = ElementType.MAudioPartEvent;
-						subElementNodeLevel = 0;
-					}
-					else if (currentlyParsingElement == ElementType.PAudioClip)
-					{
-						currentlyParsingElement = ElementType.MAudioEvent;
-						subElementNodeLevel = 0;
-					}
-				}
-			}
-			else
-			{
-				subElementNodeLevel -= 1;
-			}
-		}
-		else if (domainMemberSubMemberLevel > 0)
-		{
-			if (qName.equalsIgnoreCase("member") )
-			{
-				domainMemberSubMemberLevel -= 1;
-			}
-		}
-	}
-	
-	@Override
-	public void characters(char ch[], int start, int length) throws SAXException 
-	{
-		
-	}
-	
 	/**
 	 * Does the final processing of the parsed AudioBites.
 	 * This includes sorting by start time and removing audio bites that are not properly set up.
@@ -537,7 +556,6 @@ public class CubaseTrackXMLSaxParseHandler extends DefaultHandler
 		}
 	}
 	
-	
 	/**
 	 * Converts from midi ticks to seconds
 	 * @param ticks midi ticks
@@ -546,24 +564,6 @@ public class CubaseTrackXMLSaxParseHandler extends DefaultHandler
 	private double midiTicksToSeconds(double ticks)
 	{
 		return ticks/Constants.midiTicksPerSec;
-	}
-	
-	/**
-	 * Gets the AudioBites resulting from the parsing
-	 * @return
-	 */
-	public List<AudioBite> getAudioBites()
-	{
-		return audioBites;
-	}
-	
-	/**
-	 * Returns the number of AudioBites that were renamed due to name equality
-	 * @return
-	 */
-	public int getNumRenamedAudioBites()
-	{
-		return numRenamedAudioBites;
 	}
 	
 }

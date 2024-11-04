@@ -1,5 +1,5 @@
 //    Multi-region Exporter - for Cubase
-//    Copyright (C) 2016 Jakob Hougaard Andsersen
+//    Copyright (C) 2017 Jakob Hougaard Andsersen
 //
 //    This program is free software: you can redistribute it and/or modify
 //    it under the terms of the GNU General Public License as published by
@@ -16,25 +16,20 @@
 
 package dk.jakobhandersen.multiregionexporterforcubase;
 import java.util.ArrayList;
-import java.io.*;
-import WavFile.*;
+import java.io.File;
+import java.io.IOException;
 
 /**
- * Class based on Thread that handles the creation of the downsampled waveform audio file.
- * Uses SoX to do the downsampling.
+ * Class based on Thread that handles the reading of waveform data.
+ * Uses FFMPEG to generate png file
  * @author Jakob Hougaard Andersen
  */
 public class WaveformGenerator extends Thread
 {
 	/**
-	 * The input file (InputAudioFile) pointing to the file to be downsampled
+	 * The input file (InputAudioFile) pointing to the file to be read
 	 */
 	private InputAudioFile inputFile;
-	
-	/**
-	 * Output destination
-	 */
-	private String waveformFile;
 	
 	/**
 	 * The MultiRegionExporterForCubase to be called when done
@@ -42,14 +37,24 @@ public class WaveformGenerator extends Thread
 	private ExporterEngine caller;
 	
 	/**
-	 * Path to SoX
+	 * Path to FFMPEG
 	 */
-	private String soxPath;
+	private String ffmpegPath;
+	
+	/**
+	 * Path to the temporary files folder
+	 */
+	private String temporaryFolderPath;
 	
 	/**
 	 * Width in pixels of waveform display
 	 */
 	private int waveformWidth;
+	
+	/**
+	 * Height in pixels of waveform display
+	 */
+	private int waveformHeight;
 
 	
 	/**
@@ -60,92 +65,45 @@ public class WaveformGenerator extends Thread
 	 * @param waveformWidth width in pixels of waveform display
 	 * @param caller the MultiRegionExporterForCubase to be called when done
 	 */
-	public WaveformGenerator(InputAudioFile inputFile, String waveformFile, String soxPath, int waveformWidth, ExporterEngine caller)
+	public WaveformGenerator(InputAudioFile inputFile, String ffmpegPath, String temporaryFolderPath, int waveformWidth, int waveformHeight, ExporterEngine caller)
 	{
 		this.inputFile = inputFile;
-		this.waveformFile = waveformFile;
 		this.caller = caller;
-		this.soxPath = soxPath;
+		this.ffmpegPath = ffmpegPath;
+		this.temporaryFolderPath = temporaryFolderPath;
 		this.waveformWidth = waveformWidth;
+		this.waveformHeight = waveformHeight;
 	}
 	
 	public void run() 
 	{
 		Debug.log("Running WaveformGenerator thread");
 		boolean success = false;
-		double[][] waveFormData = new double[waveformWidth][2];
+		String waveformPngFile = null;
 		try
 		{
-			//Sox here....
-			ArrayList<String> cmdAndArgs = getSoxCommand();
-			
-			ProcessBuilder pb = new ProcessBuilder(cmdAndArgs);
-			Process p = pb.start();
-			caller.registerStartedProcess(p);
-			int result = p.waitFor();
-			if (this.isInterrupted())
+			if (inputFile.getLength() > 0)
 			{
-				Debug.log("Thread interrupted. Exiting.");
-				return;
-			}
-			caller.unregisterStartedProcess(p);
-			if (result == 0)//succes with sox conversion
-			{
-			
-				File f = new File(waveformFile);
-				WavFile wavFile = WavFile.openWavFile(f);
-				wavFile.display();
-				int numChannels = wavFile.getNumChannels();
-				long numFrames = wavFile.getNumFrames();
-				double numFramesPerWidthPixel = (double)numFrames / (double)waveformWidth;
-				double offset = 0;
-				double lastMin = 0;
-				double lastMax = 0;
-				for (int i = 0; i < waveformWidth; i++)
+				
+				ArrayList<String> cmdAndArgs = getFFMPEGCommand(inputFile.getFilename());
+				
+				waveformPngFile = cmdAndArgs.get(8);
+				
+				ProcessBuilder pb = new ProcessBuilder(cmdAndArgs);
+				
+				Process p = pb.start();
+				
+				caller.registerStartedProcess(p);
+				
+				int result = p.waitFor();
+				
+				caller.unregisterStartedProcess(p);
+				
+				if (result == 0)
 				{
-					if (this.isInterrupted())
-					{
-						Debug.log("Thread interrupted. Exiting.");
-						return;
-					}
-					long startFrame = (long)offset;
-					offset += numFramesPerWidthPixel;
-					long endFrame = (long) offset;
-					double min = 0;
-					double max = 0;
-					int framesToRead = (int)(endFrame - startFrame);
-					if (framesToRead > 0)
-					{
-						double[] buffer = new double[framesToRead * numChannels];
-						int framesRead = wavFile.readFrames(buffer, framesToRead);
-						// Loop through frames and look for minimum and maximum value
-			            for (int s=0 ; s< framesRead * numChannels ; s++)
-			            {
-			               if (buffer[s] > max) max = buffer[s];
-			               if (buffer[s] < min) min = buffer[s];
-			            }
-					}
-					else
-					{
-						min = lastMin;
-						max = lastMax;
-					}
-					waveFormData[i][0] = min;
-					waveFormData[i][1] = max;
-		            lastMin = min;
-		            lastMax = max;
-		            //Debug.log("min: "+ min +", max: "+max);
+					success = true;
 				}
-				wavFile.close();
-				System.gc();
-				f.delete();
-				success = true;
 			}
-		}
-		catch (InterruptedException e)
-		{
-			Debug.log("Thread interrupted. Exiting.");
-			return;
 		}
 		catch (Exception e)
 		{
@@ -153,37 +111,47 @@ public class WaveformGenerator extends Thread
 			e.printStackTrace();
 		}
 		
-		caller.waveformGeneratorCallback(this,success, inputFile,waveFormData);
+		caller.waveformGeneratorCallback(this,success, inputFile,waveformPngFile);
 	}
 	
+	
 	/**
-	 * Creates the command for SoX
+	 * Get the command to be sent to FFMPEG for generation of waveform png
+	 * @param inputFileName path to audio file for waveform
 	 * @return the command
 	 */
-	private ArrayList<String> getSoxCommand()
+	private ArrayList<String> getFFMPEGCommand(String inputFileName)
 	{
 		ArrayList<String> cmdAndArgs = new ArrayList<String>();
 		
-		cmdAndArgs.add(soxPath);
+		cmdAndArgs.add(ffmpegPath);
 		
-		cmdAndArgs.add(inputFile.getFilename());
+		cmdAndArgs.add("-i");
 		
-		cmdAndArgs.add("-b");
-		cmdAndArgs.add("8");
+		cmdAndArgs.add(inputFileName);
 		
-		cmdAndArgs.add(waveformFile);
+		cmdAndArgs.add("-y");
 		
-		cmdAndArgs.add("channels");
-		cmdAndArgs.add("1");//Mixdown to mono
+		cmdAndArgs.add("-filter_complex");
 		
-		cmdAndArgs.add("rate");//Resample
-		cmdAndArgs.add("-q");//quick algorithm
-		double sampleRate = 8000;
-		cmdAndArgs.add(sampleRate+"");
+		cmdAndArgs.add("showwavespic=s="+waveformWidth+"x"+waveformHeight+":split_channels=1:colors=0x000000");
 		
-		//cmdAndArgs.add("downsample");
-		//cmdAndArgs.add("200");
-			
+		cmdAndArgs.add("-frames:v");
+		
+		cmdAndArgs.add("1");
+		
+		try 
+		{
+			File f = File.createTempFile("MREFC_temp_waveform_file",".png", new File(temporaryFolderPath));
+			cmdAndArgs.add(f.getAbsolutePath());
+		}
+		catch (IOException e) 
+		{
+			Debug.log("Exception caucht while trying to create temporary file for waveform generation:");
+			e.printStackTrace();
+		}
+		
+		
 		return cmdAndArgs;
 	}
 	

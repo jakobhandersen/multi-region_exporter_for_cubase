@@ -1,5 +1,5 @@
 //    Multi-region Exporter - for Cubase
-//    Copyright (C) 2016 Jakob Hougaard Andsersen
+//    Copyright (C) 2017 Jakob Hougaard Andsersen
 //
 //    This program is free software: you can redistribute it and/or modify
 //    it under the terms of the GNU General Public License as published by
@@ -65,6 +65,12 @@ public class ReadingAudioDialog extends Dialog
 		setText("");
 	}
 
+	public void close()
+	{
+		display.timerExec(-1, textTimer);
+		shell.close();
+	}
+	
 	/**
 	 * Open the dialog.
 	 * @return the result
@@ -85,12 +91,6 @@ public class ReadingAudioDialog extends Dialog
 			}
 		}
 		return result;
-	}
-	
-	public void close()
-	{
-		display.timerExec(-1, textTimer);
-		shell.close();
 	}
 
 	/**

@@ -1,5 +1,5 @@
 //    Multi-region Exporter - for Cubase
-//    Copyright (C) 2016 Jakob Hougaard Andsersen
+//    Copyright (C) 2017 Jakob Hougaard Andsersen
 //
 //    This program is free software: you can redistribute it and/or modify
 //    it under the terms of the GNU General Public License as published by
@@ -28,13 +28,75 @@ import java.net.URISyntaxException;
 public class Utils 
 {
 	/**
-	 * Creates a valid string to be used as a file name based on input
-	 * @param input desired file name
-	 * @return valid file name based on desired name
+	 * Function for deleting folder with files/folders inside (calling itself recursively)
+	 * Found here http://javarevisited.blogspot.dk/2015/03/how-to-delete-directory-in-java-with-files.html
+	 * @param dir directory to delete
+	 * @return true if deletion was success, otherwise false
 	 */
-	public static String getValidFileNameString(String input)
+	public static boolean deleteDirectory(File dir) 
+	{ 
+		try
+		{
+			if (dir.isDirectory()) 
+			{ 
+				File[] children = dir.listFiles(); 
+				for (int i = 0; i < children.length; i++) 
+				{ 
+					boolean success = deleteDirectory(children[i]); 
+					if (!success) 
+					{ 
+						return false; 
+					} 
+					
+				} 
+				
+			} 
+		
+			// either file or an empty directory 
+			
+			boolean success =  dir.delete();
+			if (! success)
+			{
+				Debug.log("Error deleting file while deleting directory : " + dir.getName()); 
+			}
+			return success;
+		}
+		catch (Exception e)
+		{
+			Debug.log("Exception caught while trying to delete directory:");
+			e.printStackTrace();
+			return false;
+		}
+		
+	}
+	
+	/**
+	 * Delete a file
+	 * @param fileName
+	 */
+	public static  boolean deleteFile(String fileName)
 	{
-		return input.replaceAll("[\\/:*?\"<>|]", "_");
+		//Try to delete tempFile
+		try
+		{
+			File file = new File(fileName);
+			if (file.delete())
+			{
+				//Debug.log("File ("+fileName+") was successfully deleted");
+				return true;
+			}
+			else
+			{
+				Debug.log("File ("+fileName+") could not be deleted");
+				return false;
+			}
+		}
+		catch (Exception e)
+		{
+			Debug.log("Exception caught while trying to delete file "+fileName+": ");
+			e.printStackTrace();
+			return false;
+		}
 	}
 	
 	/**
@@ -84,4 +146,16 @@ public class Utils
 			return null;
 		}
 	}
+	
+	
+	/**
+	 * Creates a valid string to be used as a file name based on input
+	 * @param input desired file name
+	 * @return valid file name based on desired name
+	 */
+	public static String getValidFileNameString(String input)
+	{
+		return input.replaceAll("[\\/:*?\"<>|]", "_");
+	}
+
 }

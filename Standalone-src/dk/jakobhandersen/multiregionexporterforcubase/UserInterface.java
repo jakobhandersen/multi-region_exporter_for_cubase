@@ -1,5 +1,5 @@
 //    Multi-region Exporter - for Cubase
-//    Copyright (C) 2016 Jakob Hougaard Andsersen
+//    Copyright (C) 2017 Jakob Hougaard Andsersen
 //
 //    This program is free software: you can redistribute it and/or modify
 //    it under the terms of the GNU General Public License as published by
@@ -28,6 +28,23 @@ import java.util.List;
 public interface UserInterface 
 {
 	/**
+	 * Receive reference to currently read InputAudioFile from ExporterEngine
+	 * @param f
+	 */
+	public void audioFileRead(InputAudioFile f);
+	
+	/**
+	 * Is the computer a mac
+	 * @return true if mac
+	 */
+	public boolean computerIsMac();
+	
+	/**
+	 * Delete any range markers
+	 */
+	public void deleteRangeMarkers();
+	
+	/**
 	 * Receives EngineEvent from ExporterEngine
 	 * @param e
 	 */
@@ -41,10 +58,16 @@ public interface UserInterface
 	public void sendMessageToUser(UserMessageType type, String message);
 	
 	/**
-	 * Receive reference to currently read InputAudioFile from ExporterEngine
-	 * @param f
+	 * Tells user interface how the outputting of files is progressing
+	 * @param percentage (0 to 100) used in progress bar
 	 */
-	public void audioFileRead(InputAudioFile f);
+	public void setOuputPercentage(int percentage);
+	
+	/**
+	 * Tells user interface what the AudioOutputter is doing right now
+	 * @param text description shown to user
+	 */
+	public void setOutputProcessText(String text);
 	
 	/**
 	 * Set the markers showing the different regions.
@@ -54,13 +77,8 @@ public interface UserInterface
 	public void setRangeMarkers(List<AudioBite> bites);
 	
 	/**
-	 * Delete any range markers
-	 */
-	public void deleteRangeMarkers();
-	
-	/**
 	 * Receive data from created waveform
 	 * @param waveformData
 	 */
-	public void waveformCreated(double[][] waveformData);
+	public void waveformCreated(String waveformPngFile);
 }

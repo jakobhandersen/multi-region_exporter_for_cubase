@@ -1,5 +1,5 @@
 //    Multi-region Exporter - for Cubase
-//    Copyright (C) 2016 Jakob Hougaard Andsersen
+//    Copyright (C) 2017 Jakob Hougaard Andsersen
 //
 //    This program is free software: you can redistribute it and/or modify
 //    it under the terms of the GNU General Public License as published by
@@ -28,4 +28,14 @@ public class Constants
 	 * Apparently, some time values are given in MIDI ticks. There are 960 ticks per second.
 	 */
 	public static final double midiTicksPerSec = 960;
+	
+	/**
+	 * String representation of this version of the program
+	 */
+	public static final String versionString = "1.0.0.2";
+	
+	/**
+	 * String representation of the build date of this version
+	 */
+	public static final String buildDateString = "2017-10-08";
 }
