@@ -132,12 +132,17 @@ public class ExporterEngine
 	/**
 	 * Should the output files be converted to mp3 after splitting?
 	 */
-	private boolean convertToMp3 = false;
+	private boolean convertWithFfmpeg = false;
 	
 	/**
-	 * If converting to mp3, this is the FFMPEG argument controlling bitrate
+	 * If converting with ffmpeg, this is the string containing the arguments for the conversion (everything between input file and output file)
 	 */
-	private String convertToMp3FFMPEGBitrateArgument;
+	private String convertWithFfmpegArguments;
+	
+	/**
+	 * If converting with ffmpeg, this is the file ending/suffix of the output files
+	 */
+	private String convertWithFfmpegFileEnding;
 	
 	
 	/**
@@ -185,7 +190,7 @@ public class ExporterEngine
 			}
 			else
 			{
-				sendMessageToUser(UserMessageType.ERROR, "Error(s) accured while creating " + (total - successes) + " audio file(s).");
+				sendMessageToUser(UserMessageType.ERROR, "Error(s) occurred while creating " + (total - successes) + " audio file(s).");
 				sendMessageToUser(UserMessageType.STATE, successes + " audio files successfully created in folder: "+outputFolder);
 			}
 			if (caller != currentlyRunningSplitter)
@@ -404,20 +409,26 @@ public class ExporterEngine
 	 * Called from UserInterface when convert to mp3 is changed/set
 	 * @param convert
 	 */
-	public void setConvertToMp3(boolean convert)
+	public void setConvertWithFfmpeg(boolean convert)
 	{
-		convertToMp3 = convert;
-		Debug.log("Convert to mp3 set to "+convertToMp3);
+		convertWithFfmpeg = convert;
+		Debug.log("Convert with ffmpeg set to "+convertWithFfmpeg);
 	}
 	
 	/**
 	 * Called from UserInterface when mp3 conversion settings are changed/set
 	 * @param argument bitrate argument used in FFMPEG for mp3 conversion
 	 */
-	public void setMp3ConversionBitrateArgument(String argument)
+	public void setConvertWithFfmpegArguments(String arguments)
 	{
-		convertToMp3FFMPEGBitrateArgument = argument;
-		Debug.log("Mp3 conversion bitrate argument set to: "+convertToMp3FFMPEGBitrateArgument);
+		convertWithFfmpegArguments = arguments;
+		Debug.log("Convert with ffmpeg arguments set to: "+convertWithFfmpegArguments);
+	}
+	
+	public void setConvertWithFfmpegFileEnding(String fileEnding)
+	{
+	    convertWithFfmpegFileEnding = fileEnding.replace(".", "");
+	    Debug.log("Convert with ffmpeg file ending set to: "+convertWithFfmpegFileEnding);
 	}
 	
 	/**
@@ -634,7 +645,7 @@ public class ExporterEngine
 			return;
 		}
 		
-		if (convertToMp3)
+		if (convertWithFfmpeg)
 		{
 			sendMessageToUser(UserMessageType.STATE, "Extracting and converting "+ audioBites.size() +" file(s) to destination folder: " + outputFolder + " ...");
 		}
@@ -647,7 +658,7 @@ public class ExporterEngine
         {
         	sendMessageToUser(UserMessageType.WARNING,renamedAudioBitesInLastXML +" files were renamed since their Cubase names are not unique");
         }
-		currentlyRunningSplitter = new AudioOutputter(currentInputAudioFile,audioBites,outputFolder,soxPath, ffmpegPath,temporaryFolderPath, convertToMp3, convertToMp3FFMPEGBitrateArgument, useCubaseNames, fixedName, this);
+		currentlyRunningSplitter = new AudioOutputter(currentInputAudioFile,audioBites,outputFolder,soxPath, ffmpegPath,temporaryFolderPath, convertWithFfmpeg, convertWithFfmpegArguments, convertWithFfmpegFileEnding, useCubaseNames, fixedName, this);
 		
 		currentlyRunningSplitter.start();
 		sendEventToInterface(EngineEvent.OUTPUTTING_FILES);
@@ -701,9 +712,9 @@ public class ExporterEngine
 					for (AudioBite b : audioBites)
 					{
 						String fileName = outputFolder+"/"+b.getName()+".";
-						if (convertToMp3)
+						if (convertWithFfmpeg)
 						{
-							fileName += "mp3";
+							fileName += this.convertWithFfmpegFileEnding;
 						}
 						else
 						{
@@ -726,7 +737,7 @@ public class ExporterEngine
 					for (int i = 0; i < audioBites.size(); i++)
 					{
 						String fileName = outputFolder+"/"+fixedName+"_"+String.format("%04d", i+1)+".";
-						if (convertToMp3)
+						if (convertWithFfmpeg)
 						{
 							fileName += "mp3";
 						}
@@ -773,10 +784,11 @@ public class ExporterEngine
 		{
 			for (AudioBite b : bites)
 			{
-				if (b.getEnd() <= (currentInputAudioFile.getLength() + biteOutsideAudioTolerance))
+				if (b.getEndSec() <= (currentInputAudioFile.getLength() + biteOutsideAudioTolerance))
 				{
 					audioBites.add(b);
 				}
+				//Debug.log("Bite start sec: "+b.getStartSec() +", Bite end sec: "+b.getEndSec() +", Audio file length + tolerance:"+(currentInputAudioFile.getLength() + biteOutsideAudioTolerance));
 			}
 			
 			if (audioBites.size() > 0)
@@ -826,13 +838,13 @@ public class ExporterEngine
 			{
 				//Set functionalEnd
 				AudioBite b = audioBites.get(i);
-				double functionalEnd = b.getEnd();
+				double functionalEnd = b.getEndSec();
 				functionalEnd += trailingTime;
 				if (functionalEnd > currentInputAudioFile.getLength())//Clamp to length of audio file
 				{
 					functionalEnd = currentInputAudioFile.getLength();
 				}
-				b.setFunctionalEnd(functionalEnd);
+				b.setFunctionalEndSec(functionalEnd);
 			}
 			userInterface.setRangeMarkers(audioBites);
 		}
@@ -849,22 +861,14 @@ public class ExporterEngine
 	{
 		String fileSeparator = Utils.getFileSeparator();
 		//Calculate paths
-		if (userInterface.computerIsMac())
-		{
-			String pathToContentsFolder = Utils.getJarPath(2);
-			soxPath = pathToContentsFolder + fileSeparator + "sox" + fileSeparator + "sox";
-			soxiPath = pathToContentsFolder + fileSeparator + "sox" + fileSeparator + "soxi";
-			ffmpegPath = pathToContentsFolder + fileSeparator + "ffmpeg" + fileSeparator + "ffmpeg";
-		}
-		else
-		{
-			String pathToMainFolder = Utils.getJarPath(1);
-			String pathToResourcesFolder = pathToMainFolder + fileSeparator + "resources";
-			
-			soxPath = pathToResourcesFolder +fileSeparator + "sox" + fileSeparator + "sox";
-			soxiPath = pathToResourcesFolder + fileSeparator + "sox" + fileSeparator + "soxi";
-			ffmpegPath = pathToResourcesFolder + fileSeparator + "ffmpeg" + fileSeparator + "ffmpeg";
-		}
+		
+		String pathToMainFolder = Utils.getJarPath(1);
+		String pathToResourcesFolder = pathToMainFolder + fileSeparator + "resources";
+		
+		soxPath = pathToResourcesFolder +fileSeparator + "sox" + fileSeparator + "sox";
+		soxiPath = pathToResourcesFolder + fileSeparator + "sox" + fileSeparator + "soxi";
+		ffmpegPath = pathToResourcesFolder + fileSeparator + "ffmpeg" + fileSeparator + "ffmpeg";
+		
 		
 		try
 		{

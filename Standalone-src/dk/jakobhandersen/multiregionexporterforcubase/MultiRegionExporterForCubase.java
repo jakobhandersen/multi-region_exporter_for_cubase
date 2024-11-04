@@ -56,7 +56,6 @@ import org.eclipse.swt.graphics.Rectangle;
 import org.eclipse.swt.custom.CLabel;
 import org.eclipse.swt.events.TraverseListener;
 import org.eclipse.swt.events.TraverseEvent;
-import org.eclipse.swt.widgets.Combo;
 
 
 /**
@@ -96,6 +95,10 @@ public class MultiRegionExporterForCubase implements UserInterface
 		{
 			e.printStackTrace();
 		}
+		
+		//Call dispose on SWTResourceManager to ensure that we clear resources
+		SWTResourceManager.dispose();
+		
 		Debug.log("Exiting system");
 		System.exit(0);
 	}
@@ -112,10 +115,11 @@ public class MultiRegionExporterForCubase implements UserInterface
 	private CLabel lblAudioFileInfo;
 	private CLabel lblTrackFileName;
 	private Label waveformLabel;
-	private Combo comboConstantVariableBitrate;
-	private Combo comboBitrateVariable;
-	private Combo comboBitrateConstant;
-	
+	private Text txtFixedName;
+	private Text txtConvertWithFfmpegArgs;
+	private Text txtConvertWithFfmpegFileEnding;
+	private int standardButtonStyle = SWT.None;
+
 	
 	//Other variables
 	
@@ -128,11 +132,7 @@ public class MultiRegionExporterForCubase implements UserInterface
 	 * File name of the last loaded XML file
 	 */
 	private String lastLoadedXmlFileName;
-	
-	/**
-	 * Chosen fixed name for file naming
-	 */
-	private Text txtFixedName;
+
 	
 	/**
 	 * Reference to the currently loaded InputAudioFile (passed by ExporterEngine)
@@ -165,25 +165,6 @@ public class MultiRegionExporterForCubase implements UserInterface
 	 */
 	private String pathToOnlineDocumentation;
 	
-	/**
-	 * Path to the local documentation file
-	 */
-	private String pathToLocalDocumentation;
-	
-	/**
-	 * Above path represented as File
-	 */
-	private File localDocumentationFile;
-	
-	/**
-	 * Mapping from constant mp3 bitrate menu to ffmpeg string argument
-	 */
-	private String[] constantMp3BitrateArguments = new String[] {"-b:a 8k","-b:a 16k","-b:a 24k","-b:a 32k","-b:a 40k","-b:a 48k","-b:a 64k","-b:a 80k","-b:a 96k","-b:a 112k","-b:a 128k","-b:a 160k","-b:a 192k","-b:a 224k","-b:a 256k","-b:a 320k"};
-	
-	/**
-	 * Mapping from variable mp3 bitrate menu to ffmpeg string argument
-	 */
-	private String[] variableMp3BitrateArguments = new String[] {"-q:a 9","-q:a 8","-q:a 7","-q:a 6","-q:a 5","-q:a 4","-q:a 3","-q:a 2","-q:a 1","-q:a 0"};
 	
 	/**
 	 * Dialog shown when outputting files
@@ -266,6 +247,10 @@ public class MultiRegionExporterForCubase implements UserInterface
 		engine = new ExporterEngine(this);
 		display = Display.getDefault();
 		
+		if (!isMac)
+		{
+		    this.standardButtonStyle = SWT.WRAP;
+		}
 		
 		createContents();
 		
@@ -369,19 +354,35 @@ public class MultiRegionExporterForCubase implements UserInterface
 		{
 		    public void run() 
 		    {
+		        /*
 		    	//Non-wrapped solution
-				/*TableItem tableItem = new TableItem(table_1, SWT.NONE);
+		        TableItem tableItem = new TableItem(logWindowTable, SWT.None);
 				tableItem.setText(getStartStringForUserMessageType(type) + message);
 				tableItem.setForeground(getColorForUserMessageType(type));
-				table_1.showItem(tableItem);*/
+				logWindowTable.showItem(tableItem);*/
 				
 				//Wrapped text solution
-				List<String> splitStrings = getWrappedString(getStartStringForUserMessageType(type) + message,573,logWindowTable);
+		        int maxLength = 750;
+		        if (!isMac)
+		        {
+		            maxLength = 700;
+		        }
+				List<String> splitStrings = getWrappedString(getStartStringForUserMessageType(type) + message,maxLength,logWindowTable);
 				for (int i = 0; i < splitStrings.size(); i++)
 				{
 					TableItem tableItem = new TableItem(logWindowTable, SWT.NONE);
 					tableItem.setText(splitStrings.get(i));
-					tableItem.setForeground(getColorForUserMessageType(type));
+					if (isMac)
+					{
+					    tableItem.setFont(SWTResourceManager.getFont("Arial", 10, SWT.NORMAL));
+					}
+					else
+					{
+					    tableItem.setFont(SWTResourceManager.getFont("Arial", 7, SWT.NORMAL));
+					}
+					
+				    tableItem.setForeground(getColorForUserMessageType(type));
+					
 					logWindowTable.showItem(tableItem);
 				}
 		    }
@@ -417,8 +418,8 @@ public class MultiRegionExporterForCubase implements UserInterface
 			    	for (int i = 0; i < bites.size(); i++)
 			    	{
 			    		AudioBite b = bites.get(i);
-			    		double startFraction = b.getStart() / currentInputAudioFile.getLength();
-			    		double lengthFraction = (b.getFunctionalEnd() - b.getStart()) / currentInputAudioFile.getLength();
+			    		double startFraction = b.getStartSec() / currentInputAudioFile.getLength();
+			    		double lengthFraction = (b.getFunctionalEndSec() - b.getStartSec()) / currentInputAudioFile.getLength();
 			    		rangeMarkers[i] = new Rectangle((int)(startFraction * waveformWidth),0,(int)(lengthFraction * waveformWidth),waveformHeight);
 			    	}
 		    	}
@@ -514,24 +515,49 @@ public class MultiRegionExporterForCubase implements UserInterface
 	 */
 	private Color getColorForUserMessageType(UserMessageType t)
 	{
-		Color ret = SWTResourceManager.getColor(SWT.COLOR_BLACK);
-		switch (t)
-		{
-		case ERROR:
-			ret = SWTResourceManager.getColor(SWT.COLOR_DARK_RED);
-			break;
-			
-		case WARNING:
-			ret = SWTResourceManager.getColor(SWT.COLOR_DARK_BLUE);
-			break;
-			
-		case SUCCESS:
-			ret = SWTResourceManager.getColor(SWT.COLOR_DARK_GREEN);
-			break;
+	    if (!Display.isSystemDarkTheme())
+	    {
+	        Color ret = SWTResourceManager.getColor(SWT.COLOR_BLACK);
+	        switch (t)
+	        {
+	        case ERROR:
+	            ret = SWTResourceManager.getColor(SWT.COLOR_DARK_RED);
+	            break;
+	            
+	        case WARNING:
+	            ret = SWTResourceManager.getColor(SWT.COLOR_DARK_BLUE);
+	            break;
+	            
+	        case SUCCESS:
+	            ret = SWTResourceManager.getColor(SWT.COLOR_DARK_GREEN);
+	            break;
+	        
+	            default: break;
+	        }
+	        return ret;
+	    }
+	    else //If we use dark mode on mac os
+	    {
+	        Color ret = SWTResourceManager.getColor(SWT.COLOR_WHITE);
+            switch (t)
+            {
+            case ERROR:
+                ret = SWTResourceManager.getColor(SWT.COLOR_RED);
+                break;
+                
+            case WARNING:
+                ret = SWTResourceManager.getColor(SWT.COLOR_YELLOW);
+                break;
+                
+            case SUCCESS:
+                ret = SWTResourceManager.getColor(SWT.COLOR_GREEN);
+                break;
+            
+                default: break;
+            }
+            return ret;
+	    }
 		
-			default: break;
-		}
-		return ret;
 	}
 
 	/**
@@ -647,18 +673,20 @@ public class MultiRegionExporterForCubase implements UserInterface
 	}
 	
 	/**
-	 * Called when mp3 conversion bitrate is changed/initialized
+	 * Called when convert to ffmpeg arguments are changed/initialized
 	 */
-	private void sendMp3ConversionArgToEngine()
+	private void sendConvertWithFfmpegArgsToEngine()
 	{
-		if (comboConstantVariableBitrate.getSelectionIndex() == 0)//Constant bitrate
-		{
-			engine.setMp3ConversionBitrateArgument(constantMp3BitrateArguments[comboBitrateConstant.getSelectionIndex()]);
-		}
-		else//Variable bitrate
-		{
-			engine.setMp3ConversionBitrateArgument(variableMp3BitrateArguments[comboBitrateVariable.getSelectionIndex()]);
-		}
+		engine.setConvertWithFfmpegArguments(txtConvertWithFfmpegArgs.getText());
+	}
+	
+	
+	/**
+     * Called when convert to ffmpeg file ending is changed/initialized
+     */
+	private void sendConvertWithFfmpegFileEndingToEngine()
+	{
+	    engine.setConvertWithFfmpegFileEnding(txtConvertWithFfmpegFileEnding.getText());
 	}
 	
 	/**
@@ -666,21 +694,7 @@ public class MultiRegionExporterForCubase implements UserInterface
 	 */
 	private void setPaths()
 	{
-		//Calculate paths
-//		if (isMac)
-//		{
-//			String pathToContentsFolder = Utils.getJarPath(2);
-//			String fileSeparator = Utils.getFileSeparator();
-//			pathToLocalDocumentation = pathToContentsFolder + fileSeparator + "documentation" + fileSeparator + "documentation.pdf";
-//		}
-		if (!isMac)//	Desktop.getDesktop().open() apparently doesn't work in bundled OS X App anymore, so path to local documentation is only relevant on Windows
-		{
-			String pathToMainFolder = Utils.getJarPath(1);
-			String fileSeparator = Utils.getFileSeparator();
-			pathToLocalDocumentation = pathToMainFolder + fileSeparator + "documentation" + fileSeparator + "documentation.pdf";
-			Debug.log("Path to local documentation set to: " + pathToLocalDocumentation);
-			localDocumentationFile = new File(pathToLocalDocumentation);
-		}
+		//Set paths (previously we also had a local documentation file but now it is only the online path)
 		
 		pathToOnlineDocumentation = "http://jakobhandersen.dk/projects/multi-region-exporter/documentation/";
 		
@@ -693,6 +707,7 @@ public class MultiRegionExporterForCubase implements UserInterface
 	 */
 	private void setup()
 	{
+	    
 		btnOutputFiles.setEnabled(false);
 		btnLoadTrackFile.setEnabled(false);
 		setPaths();
@@ -754,7 +769,6 @@ public class MultiRegionExporterForCubase implements UserInterface
 	 */
 	protected void createContents() 
 	{
-		
 		shell = new Shell();
 		shell.setSize(800, 800);
 		shell.setText("Multi-region Exporter - for Cubase");
@@ -845,11 +859,7 @@ public class MultiRegionExporterForCubase implements UserInterface
 			lblVersion.setFont(SWTResourceManager.getFont("Arial", 10, SWT.NORMAL));
 		}
 		
-		btnLoadAudioFile = new Button(shell, SWT.NONE);
-		if (!isMac)
-		{
-			btnLoadAudioFile = new Button(shell, SWT.WRAP);
-		}
+		btnLoadAudioFile = new Button(shell, this.standardButtonStyle);
 		btnLoadAudioFile.setToolTipText("Click here to load an input audio file.\r\nThis should be the full mixdown you exported from Cubase\r\ncontaining all the desired regions.");
 		btnLoadAudioFile.addSelectionListener(new SelectionAdapter() 
 		{
@@ -860,13 +870,9 @@ public class MultiRegionExporterForCubase implements UserInterface
 			}
 		});
 		btnLoadAudioFile.setBounds(30, 115, 131, 54);
-		btnLoadAudioFile.setText("Load audio file");
+		btnLoadAudioFile.setText("1) Load audio file");
 		
-		btnLoadTrackFile = new Button(shell, SWT.NONE);
-		if (!isMac)
-		{
-			btnLoadTrackFile = new Button(shell, SWT.WRAP);
-		}
+		btnLoadTrackFile = new Button(shell, this.standardButtonStyle);
 		btnLoadTrackFile.setToolTipText("Click here to load a Cubase track file (XML)");
 		btnLoadTrackFile.addSelectionListener(new SelectionAdapter() 
 		{
@@ -877,13 +883,12 @@ public class MultiRegionExporterForCubase implements UserInterface
 			}
 		});
 		btnLoadTrackFile.setBounds(30, 253, 131, 54);
-		btnLoadTrackFile.setText("Load Cubase\r\ntrack file (.xml)");
+		btnLoadTrackFile.setText("2) Load Cubase\r\ntrack file (.xml)");
 		
-		btnOutputFiles = new Button(shell, SWT.NONE);
-		if (!isMac)
-		{
-			btnOutputFiles = new Button(shell, SWT.WRAP);
-		}
+		
+		btnOutputFiles = new Button(shell,this.standardButtonStyle);
+		btnOutputFiles.setBounds(30, 499, 131, 54);
+
 		btnOutputFiles.setToolTipText("Click here to select output destination and create extracted audio files");
 		btnOutputFiles.addSelectionListener(new SelectionAdapter() 
 		{
@@ -893,8 +898,8 @@ public class MultiRegionExporterForCubase implements UserInterface
 				outputFilesToFolder();
 			}
 		});
-		btnOutputFiles.setText("Output audio\nfiles to folder");
-		btnOutputFiles.setBounds(30, 350, 131, 54);
+		btnOutputFiles.setText("3) Output audio\nfiles to folder");
+		
 		
 		
 		if (isMac)
@@ -985,43 +990,30 @@ public class MultiRegionExporterForCubase implements UserInterface
 		});
 		mntmOnlineDocumentation.setText("Online Documentation");
 		
-		if (! isMac) //	Desktop.getDesktop().open() apparently doesn't work in bundled OS X App anymore, so only add link to local documentation on Windows
-		{
-			MenuItem mntmLocalDocumentation = new MenuItem(helpMenu, SWT.NONE);
-			mntmLocalDocumentation.addSelectionListener(new SelectionAdapter() 
-			{
-				@Override
-				public void widgetSelected(SelectionEvent e) 
-				{
-					
-				        try 
-				        {
-				        	Desktop.getDesktop().open(localDocumentationFile);
-				        } 
-				        catch (Exception ex) 
-				        {
-				            ex.printStackTrace();
-				        }
-				    
-				}
-			});
-			mntmLocalDocumentation.setText("Local Documentation");
-		}
 		
 		logWindowTable = new Table(shell, SWT.BORDER | SWT.FULL_SELECTION | SWT.NO_SCROLL | SWT.V_SCROLL);
 		logWindowTable.setToolTipText("Log window");
 		logWindowTable.setHeaderVisible(true);
 		logWindowTable.setLinesVisible(true);
-		logWindowTable.setBounds(170, 542, 592, 173);
+		logWindowTable.setBounds(170, 565, 592, 173);
+		if (!isMac)
+        {
+		    logWindowTable.setBounds(170, 565, 592, 160);
+        }
 		
 		TableColumn tblclmnMessage = new TableColumn(logWindowTable, SWT.NONE);
 		tblclmnMessage.setResizable(false);
 		tblclmnMessage.setWidth(588);
 		tblclmnMessage.setText("Log window");
 		
-		Button btnClearLog = new Button(shell, SWT.NONE);
+		
+		Button btnClearLog = new Button(shell, this.standardButtonStyle);
+		btnClearLog.setBounds(68, 715, 94, 28);
+		if (!isMac)
+		{
+		    btnClearLog.setBounds(68, 697, 94, 28);
+		}
 		btnClearLog.setToolTipText("Click here to clear the log window below");
-		btnClearLog.setFont(SWTResourceManager.getFont("Arial", 10, SWT.NORMAL));
 		btnClearLog.addSelectionListener(new SelectionAdapter() 
 		{
 			@Override
@@ -1031,13 +1023,12 @@ public class MultiRegionExporterForCubase implements UserInterface
 				logWindowTable.setItemCount(0);
 			}
 		});
-		btnClearLog.setBounds(68, 687, 94, 28);
 		btnClearLog.setText("Clear log");
 		
 		Group grpOptions = new Group(shell, SWT.NONE);
 		grpOptions.setFont(SWTResourceManager.getFont("Arial", 13, SWT.NORMAL));
 		grpOptions.setText("Options:");
-		grpOptions.setBounds(170, 324, 592, 205);
+		grpOptions.setBounds(170, 324, 592, 230);
 		if (! isMac)
 		{
 			grpOptions.setFont(SWTResourceManager.getFont("Arial", 11, SWT.NORMAL));
@@ -1117,7 +1108,7 @@ public class MultiRegionExporterForCubase implements UserInterface
 		txtFixedName.setEnabled(false);
 		txtFixedName.setText("region");
 		txtFixedName.setFont(SWTResourceManager.getFont("Arial", 11, SWT.NORMAL));
-		txtFixedName.setBounds(117, 34, 189, 19);
+		txtFixedName.setBounds(117, 32, 189, 19);
 		if (! isMac)
 		{
 			txtFixedName.setBounds(130, 50, 170, 19);
@@ -1175,138 +1166,136 @@ public class MultiRegionExporterForCubase implements UserInterface
 		
 		Group grpConversion = new Group(grpOptions, SWT.NONE);
 		grpConversion.setFont(SWTResourceManager.getFont("Arial", 12, SWT.NORMAL));
-		grpConversion.setToolTipText("Settings for optional conversion to mp3");
+		grpConversion.setToolTipText("Settings for optional conversion with FFmpeg");
 		grpConversion.setText("Conversion:");
-		grpConversion.setBounds(20, 105, 548, 67);
+		grpConversion.setBounds(20, 105, 548, 87);
 		if (! isMac)
 		{
-			grpConversion.setBounds(20, 125, 548, 67);
+			grpConversion.setBounds(20, 125, 548, 87);
 			grpConversion.setFont(SWTResourceManager.getFont("Arial", 10, SWT.NORMAL));
 		}
 		
+		Label lblFfmpegArgs = new Label(grpConversion, SWT.NONE);
+		lblFfmpegArgs.setFont(SWTResourceManager.getFont("Arial", 11, SWT.NORMAL));
+		lblFfmpegArgs.setBounds(10, 39, 100, 25);
+		lblFfmpegArgs.setText("FFmpeg arguments:");
+        if (! isMac)
+        {
+            lblFfmpegArgs.setBounds(10, 55, 112, 25);
+            lblFfmpegArgs.setFont(SWTResourceManager.getFont("Arial", 9, SWT.NORMAL));
+        }
+		
+		
+		txtConvertWithFfmpegArgs = new Text(grpConversion, SWT.BORDER);
+		txtConvertWithFfmpegArgs.setToolTipText("The FFmpeg conversion arguments (everything between input file and output file). Note that the argument '-y' is automatically added in order to overwrite without asking.");
+		txtConvertWithFfmpegArgs.addModifyListener(new ModifyListener() 
+        {
+            public void modifyText(ModifyEvent e) 
+            {
+                sendConvertWithFfmpegArgsToEngine();
+            }
+        });
+		txtConvertWithFfmpegArgs.addTraverseListener(new TraverseListener() 
+        {
+            public void keyTraversed(TraverseEvent e) 
+            {
+                if (e.detail == SWT.TRAVERSE_RETURN) 
+                {
+                    shell.forceFocus();
+                }
+            }
+        });
+		txtConvertWithFfmpegArgs.setEnabled(false);
+		txtConvertWithFfmpegArgs.setText("-qscale:a 1");
+		txtConvertWithFfmpegArgs.setFont(SWTResourceManager.getFont("Arial", 11, SWT.NORMAL));
+		txtConvertWithFfmpegArgs.setBounds(116, 36, 230, 19);
+        if (! isMac)
+        {
+            txtConvertWithFfmpegArgs.setBounds(125, 52, 220, 19);
+            txtConvertWithFfmpegArgs.setFont(SWTResourceManager.getFont("Arial", 9, SWT.NORMAL));
+        }
+        
+        
+        Label lblFfmpegFileEnding = new Label(grpConversion, SWT.NONE);
+        lblFfmpegFileEnding.setFont(SWTResourceManager.getFont("Arial", 11, SWT.NORMAL));
+        lblFfmpegFileEnding.setBounds(370, 39, 100, 25);
+        lblFfmpegFileEnding.setText("Filename extension:");
+        if (! isMac)
+        {
+            lblFfmpegFileEnding.setBounds(365, 55, 110, 25);
+            lblFfmpegFileEnding.setFont(SWTResourceManager.getFont("Arial", 9, SWT.NORMAL));
+        }
+        
+        
+        txtConvertWithFfmpegFileEnding = new Text(grpConversion, SWT.BORDER);
+        txtConvertWithFfmpegFileEnding.setToolTipText("Filename extension (suffix) of the converted ouput files");
+        txtConvertWithFfmpegFileEnding.addModifyListener(new ModifyListener() 
+        {
+            public void modifyText(ModifyEvent e) 
+            {
+                sendConvertWithFfmpegFileEndingToEngine();
+            }
+        });
+        txtConvertWithFfmpegFileEnding.addTraverseListener(new TraverseListener() 
+        {
+            public void keyTraversed(TraverseEvent e) 
+            {
+                if (e.detail == SWT.TRAVERSE_RETURN) 
+                {
+                    shell.forceFocus();
+                }
+            }
+        });
+        txtConvertWithFfmpegFileEnding.setEnabled(false);
+        txtConvertWithFfmpegFileEnding.setText("mp3");
+        txtConvertWithFfmpegFileEnding.setFont(SWTResourceManager.getFont("Arial", 11, SWT.NORMAL));
+        txtConvertWithFfmpegFileEnding.setBounds(475, 36, 50, 19);
+        if (! isMac)
+        {
+            txtConvertWithFfmpegFileEnding.setBounds(477, 52, 50, 19);
+            txtConvertWithFfmpegFileEnding.setFont(SWTResourceManager.getFont("Arial", 9, SWT.NORMAL));
+        }
 	
-		
-		comboBitrateConstant = new Combo(grpConversion, SWT.READ_ONLY);
-		comboBitrateConstant.setItems(new String[] {"8 kbit/s", "16  kbit/s", "24  kbit/s", "32 kbit/s", "40  kbit/s", "48 kbit/s", "64 kbit/s", "80 kbit/s", "96 kbit/s", "112 kbit/s", "128 kbit/s", "160 kbit/s", "192 kbit/s", "224 kbit/s", "256 kbit/s", "320 kbit/s"});
-		comboBitrateConstant.setBounds(300, 11, 110, 22);
-		comboBitrateConstant.setFont(SWTResourceManager.getFont("Arial", 11, SWT.NORMAL));
-		comboBitrateConstant.setToolTipText("Choose constant bitrate for mp3 conversion");
-		comboBitrateConstant.select(12);
+				
+		Button btnCheckConvertWithFfmpeg = new Button(grpConversion, SWT.CHECK);
+		btnCheckConvertWithFfmpeg.setFont(SWTResourceManager.getFont("Arial", 11, SWT.NORMAL));
+		btnCheckConvertWithFfmpeg.setBounds(10, 10, 140, 18);
+		btnCheckConvertWithFfmpeg.setText("Convert with FFmpeg");
+		btnCheckConvertWithFfmpeg.setToolTipText("Choose whether the output files should be converted with FFmpeg after extraction");
+		grpConversion.setTabList(new Control[]{btnCheckConvertWithFfmpeg, txtConvertWithFfmpegArgs, txtConvertWithFfmpegFileEnding});
 		if (! isMac)
 		{
-			comboBitrateConstant.setFont(SWTResourceManager.getFont("Arial", 9, SWT.NORMAL));
-			comboBitrateConstant.setBounds(300, 26, 110, 22);
+			btnCheckConvertWithFfmpeg.setFont(SWTResourceManager.getFont("Arial", 9, SWT.NORMAL));
+			btnCheckConvertWithFfmpeg.setBounds(10, 26, 140, 18);
 		}
-		comboBitrateConstant.addSelectionListener(new SelectionAdapter() 
+		btnCheckConvertWithFfmpeg.addSelectionListener(new SelectionAdapter() 
 		{
 			@Override
 			public void widgetSelected(SelectionEvent e) 
 			{
-				sendMp3ConversionArgToEngine();
+				boolean checked = btnCheckConvertWithFfmpeg.getSelection();
+				
+				txtConvertWithFfmpegArgs.setEnabled(checked);
+				txtConvertWithFfmpegFileEnding.setEnabled(checked);
+				sendConvertWithFfmpegFileEndingToEngine();
+				sendConvertWithFfmpegArgsToEngine();
+				engine.setConvertWithFfmpeg(checked);
 			}
 		});
-		
-		
-		comboBitrateVariable = new Combo(grpConversion, SWT.READ_ONLY);
-		comboBitrateVariable.setItems(new String[] {"65 kbit/s (avg)", "85 kbit/s (avg)", "100 kbit/s (avg)", "115 kbit/s (avg)", "130 kbit/s (avg)", "165 kbit/s (avg)", "175 kbit/s (avg)", "190 kbit/s (avg)", "225 kbit/s (avg)", "245 kbit/s (avg)"});
-		comboBitrateVariable.setBounds(300, 11, 120, 22);
-		comboBitrateVariable.setFont(SWTResourceManager.getFont("Arial", 11, SWT.NORMAL));
-		comboBitrateVariable.setToolTipText("Choose average bitrate (variable) for mp3 conversion");
-		comboBitrateVariable.select(7);
-		if (! isMac)
-		{
-			comboBitrateVariable.setFont(SWTResourceManager.getFont("Arial", 9, SWT.NORMAL));
-			comboBitrateVariable.setBounds(300, 26, 120, 22);
-		}
-		comboBitrateVariable.addSelectionListener(new SelectionAdapter() 
-		{
-			@Override
-			public void widgetSelected(SelectionEvent e) 
-			{
-				sendMp3ConversionArgToEngine();
-			}
-		});
-		
-		
-		comboConstantVariableBitrate = new Combo(grpConversion, SWT.READ_ONLY);
-		comboConstantVariableBitrate.setItems(new String[] {"Constant bit rate", "Variable bit rate"});
-		comboConstantVariableBitrate.setBounds(140, 11, 120, 22);
-		comboConstantVariableBitrate.setFont(SWTResourceManager.getFont("Arial", 11, SWT.NORMAL));
-		comboConstantVariableBitrate.setToolTipText("Choose between constant or variable bitrate for mp3 conversion");
-		comboConstantVariableBitrate.select(0);
-		if (! isMac)
-		{
-			comboConstantVariableBitrate.setFont(SWTResourceManager.getFont("Arial", 9, SWT.NORMAL));
-			comboConstantVariableBitrate.setBounds(140, 26, 120, 22);
-		}
-		comboConstantVariableBitrate.addSelectionListener(new SelectionAdapter() 
-		{
-			@Override
-			public void widgetSelected(SelectionEvent e) 
-			{
-				int selected = comboConstantVariableBitrate.getSelectionIndex();
-				if (selected == 0)
-				{
-					comboBitrateVariable.setVisible(false);
-					comboBitrateConstant.setVisible(true);
-				}
-				else
-				{
-					comboBitrateVariable.setVisible(true);
-					comboBitrateConstant.setVisible(false);
-				}
-				sendMp3ConversionArgToEngine();
-			}
-		});
-		
-	
-		
-		
-		//Set mp3 options to disabled on start
-		comboBitrateVariable.setEnabled(false);
-		comboBitrateConstant.setEnabled(false);
-		comboConstantVariableBitrate.setEnabled(false);
-		
-		//Set variable bitrate selector to hidden on start
-		comboBitrateVariable.setVisible(false);
-		
-		Button btnCheckConvertToMp3 = new Button(grpConversion, SWT.CHECK);
-		btnCheckConvertToMp3.setFont(SWTResourceManager.getFont("Arial", 11, SWT.NORMAL));
-		btnCheckConvertToMp3.setBounds(10, 10, 110, 18);
-		btnCheckConvertToMp3.setText("Convert to mp3");
-		btnCheckConvertToMp3.setToolTipText("Choose whether the output files should be converted to mp3 after extraction");
-		grpConversion.setTabList(new Control[]{btnCheckConvertToMp3, comboConstantVariableBitrate, comboBitrateVariable, comboBitrateConstant});
-		if (! isMac)
-		{
-			btnCheckConvertToMp3.setFont(SWTResourceManager.getFont("Arial", 9, SWT.NORMAL));
-			btnCheckConvertToMp3.setBounds(10, 26, 110, 18);
-		}
-		btnCheckConvertToMp3.addSelectionListener(new SelectionAdapter() 
-		{
-			@Override
-			public void widgetSelected(SelectionEvent e) 
-			{
-				boolean checked = btnCheckConvertToMp3.getSelection();
-				comboBitrateVariable.setEnabled(checked);
-				comboBitrateConstant.setEnabled(checked);
-				comboConstantVariableBitrate.setEnabled(checked);
-				sendMp3ConversionArgToEngine();
-				engine.setConvertToMp3(checked);
-			}
-		});
-		btnCheckConvertToMp3.addTraverseListener(new TraverseListener() 
+		btnCheckConvertWithFfmpeg.addTraverseListener(new TraverseListener() 
 		{
 			public void keyTraversed(TraverseEvent e) 
 			{
 				if (e.detail == SWT.TRAVERSE_RETURN) 
 				{
-					btnCheckConvertToMp3.setSelection(!btnCheckConvertToMp3.getSelection());
-					boolean checked = btnCheckConvertToMp3.getSelection();
-					comboBitrateVariable.setEnabled(checked);
-					comboBitrateConstant.setEnabled(checked);
-					comboConstantVariableBitrate.setEnabled(checked);
-					sendMp3ConversionArgToEngine();
-					engine.setConvertToMp3(checked);
+					btnCheckConvertWithFfmpeg.setSelection(!btnCheckConvertWithFfmpeg.getSelection());
+					boolean checked = btnCheckConvertWithFfmpeg.getSelection();
+					
+					txtConvertWithFfmpegArgs.setEnabled(checked);
+	                txtConvertWithFfmpegFileEnding.setEnabled(checked);
+	                sendConvertWithFfmpegFileEndingToEngine();
+					sendConvertWithFfmpegArgsToEngine();
+					engine.setConvertWithFfmpeg(checked);
 				}
 			}
 		});

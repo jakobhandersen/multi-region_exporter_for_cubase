@@ -1,35 +1,42 @@
-The Multi-region Exporter – for Cubase consists partly of other software (SoX, FFmpeg, OpenJDK) distributed along with it.
+The Multi-region Exporter - for Cubase consists partly of other software (SoX, FFmpeg, OpenJDK) distributed along with it.
 Each of these have their own license agreement.
+
+---
 
 The part that is made specifically for The Multi-region Exporter (not SoX, FFmpeg or OpenJDK) is open source and licensed under the GNU General Public License (GPL) version 3 which basically means that:
 
 This program is free software: you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version.
+This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
 
-This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for more details.
+See the GNU General Public License for more details (https://www.gnu.org/licenses/gpl-3.0.en.html).
 
-The audio splitting is done by SoX – Sound eXchange which is distributed in binary form with The Multi-region Exporter – for Cubase. SoX itself is licensed under the GNU General Public License version 2. The source code for SoX can be found on the SoX project’s homepage. Below I have included the license notification from the SoX documentation:
+---
+
+The audio splitting is done by SoX - Sound eXchange (http://sox.sourceforge.net/) which is distributed in binary form with The Multi-region Exporter - for Cubase. SoX itself is licensed under the GNU General Public License version 2. The source code for SoX can be found on the SoX project's homepage. Below I have included the license notification from the SoX documentation:
 
 Copyright 1998−2013 Chris Bagwell and SoX Contributors.
 Copyright 1991 Lance Norskog and Sundry Contributors.
-
 This program is free software; you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation; either version 2, or (at your option) any later version.
-
 This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for more details.
 
-Thanks to SoX for making and sharing this tool.
+A big thanks to SoX for creating and sharing their tool.
 
-The generation of audio waveform and the optional conversion to other formats is done by FFMPEG which is distributed with the program in binary form. FFMPEG is itself licensed under the GNU Lesser General Public License (LGPL) version 2.1 or later (read more here: https://www.ffmpeg.org/legal.html).
+---
 
-A big thanks to FFMPEG for creating and sharing their tool.
+The generation of audio waveform and the optional conversion to other formats is done by FFmpeg (https://www.ffmpeg.org/) which is distributed with the program in binary form. FFmpeg is itself licensed under the GNU Lesser General Public License (LGPL) version 2.1 or later (read more here: https://www.ffmpeg.org/legal.html).
 
-The distributed OS X binary of FFMPEG is the one available here: https://evermeet.cx/ffmpeg/
+A big thanks to FFmpeg for creating and sharing their tool.
+
+The distributed OS X binary of FFmpeg is the one available here: https://evermeet.cx/ffmpeg/
 You can read more about the included libraries, find source code and their respective licenses on the web site.
 
-The distributed Windows binary of FFMPEG is the one available here: http://ffmpeg.zeranoe.com/builds/
+The distributed Windows binary of FFmpeg is the one available here: http://ffmpeg.zeranoe.com/builds/
 You can read more about the included libraries, find source code and their respective licenses on the web site.
 
-The Multi-region Exporter is also distributed with its ‘own’ copy of the Java Runtime Environment (JRE). This is because the Exporter runs on Java – the JRE is included to ensure that the Exporter has access to a compatible JRE version. While this does make the application around 9 times as big as if relying on a public JRE on the user’s computer, I think it is worth the extra megabytes. The included JRE is from OpenJDK and it has its own licence agreement, which can be found here: https://openjdk.java.net/legal/
+---
 
-Thanks to MegaNørd and G.O.L.D.
+The Multi-region Exporter is also distributed with its 'own' copy of the Java Runtime Environment (JRE). This is because the Exporter runs on Java - the JRE is included to ensure that the Exporter has access to a compatible JRE version. While this does make the application around 9 times as big as if relying on a public JRE on the user's computer, I think it is worth the extra megabytes. The included JRE is from OpenJDK and it has its own licence agreement, which can be found here: https://openjdk.java.net/legal/
 
-Thanks to friends and family for testing and counselling.
+---
+
+It must also be mentioned that Cubase and Steinberg have nothing to do with the development of this tool and therefore they are in no way responsible for it - its functionality / lack of functionality or for supporting it.

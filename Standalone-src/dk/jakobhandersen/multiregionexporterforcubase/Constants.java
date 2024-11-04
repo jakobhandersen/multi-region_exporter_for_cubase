@@ -24,18 +24,19 @@ package dk.jakobhandersen.multiregionexporterforcubase;
 public class Constants 
 {
 	/**
-	 * To calculate time i seconds. 
-	 * Apparently, some time values are given in MIDI ticks. There are 960 ticks per second.
+	 * The number of midi ticks per second per BPM – To convert from midi ticks to seconds (some time values are given in MIDI ticks).
+	 * In earlier versions of the Exporter, it was assumed that there are always 960 midi ticks per seconds, but in reality it depends on the current BPM.
+	 * So now the value is given in this format.
 	 */
-	public static final double midiTicksPerSec = 960;
+	public static final double midiTicksPerSecPerBPM = 8;
 	
 	/**
 	 * String representation of this version of the program
 	 */
-	public static final String versionString = "1.0.0.3";
+	public static final String versionString = "2.0";
 	
 	/**
 	 * String representation of the build date of this version
 	 */
-	public static final String buildDateString = "2018-07-20";
+	public static final String buildDateString = "2020-09-10";
 }

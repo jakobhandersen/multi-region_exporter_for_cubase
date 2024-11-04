@@ -64,17 +64,22 @@ public class AudioOutputter extends Thread
 	private String temporaryFolderPath;
 	
 	/**
-	 * Should the output files be converted to mp3 after splitting?
+	 * Should the output files be converted using ffmpeg after splitting?
 	 */
-	private boolean convertToMp3 = false;
+	private boolean convertWithFfmpeg = false;
 	
 	/**
-	 * If converting to mp3, this is the FFMPEG argument controlling bitrate
+	 * If converting with ffmpeg, these are the arguments for conversion (between input file and output file)
 	 */
-	private ArrayList<String> convertToMp3FFMPEGBitrateArguments;
+	private ArrayList<String> convertWithFfmpegArguments;
 	
 	/**
-	 * Should cubase names/descriptions be used for naming output files?
+	 * If converting with ffmpeg, this is the file ending of the output files
+	 */
+	private String convertWithFfmpegFileEnding;
+	
+	/**
+	 * Should Cubase names/descriptions be used for naming output files?
 	 */
 	private boolean useCubaseNames;
 	
@@ -83,6 +88,11 @@ public class AudioOutputter extends Thread
 	 */
 	private String fixedName;
 	
+	/*
+	 * If errors occur with conversion with ffmpeg, this will be set to true
+	 */
+	private boolean ffmpegError = false;
+	
 	/**
 	 * Constructor
 	 * @param inputFile the audio input file (AudioInputFile) that should be split.
@@ -90,13 +100,14 @@ public class AudioOutputter extends Thread
 	 * @param outputFolder where to output the files
 	 * @param soxPath path to SoX program
 	 * @param ffmpegPath path to FFMPEG program
-	 * @param convertToMp3 should the files be converted to mp3 after splitting
-	 * @param convertToMp3FFMPEGBitrateArgument if mp3 conversion is used, this is the bitrate parameter for FFMPEG
+	 * @param convertWithFfmpeg should the files be converted using ffmpeg after splitting
+	 * @param convertWithFfmpegArguments if converting with ffmpeg, this string is the supplied arguments
+	 * @param convertWithFfmpegFileEnding if converting with ffmpeg, this is the file ending (suffix) of the output files
 	 * @param useCubaseNames should Cubase names/descriptions be used for naming output files?
 	 * @param fixedName If useCubaseNames == false, this string will be used for naming the output audio files
 	 * @param caller the MultiRegionExporterForCubase to call when done splitting
 	 */
-	public AudioOutputter(InputAudioFile inputFile, List<AudioBite> audioBites, String outputFolder, String soxPath, String ffmpegPath, String temporaryFolderPath, boolean convertToMp3, String convertToMp3FFMPEGBitrateArgument, boolean useCubaseNames, String fixedName, ExporterEngine caller)
+	public AudioOutputter(InputAudioFile inputFile, List<AudioBite> audioBites, String outputFolder, String soxPath, String ffmpegPath, String temporaryFolderPath, boolean convertWithFfmpeg, String convertWithFfmpegArguments, String convertWithFfmpegFileEnding, boolean useCubaseNames, String fixedName, ExporterEngine caller)
 	{
 		this.audioBites = audioBites;
 		this.inputFile = inputFile;
@@ -105,24 +116,23 @@ public class AudioOutputter extends Thread
 		this.soxPath = soxPath;
 		this.ffmpegPath = ffmpegPath;
 		this.temporaryFolderPath = temporaryFolderPath;
-		this.convertToMp3 = convertToMp3;
-		if (convertToMp3)
+		this.convertWithFfmpeg = convertWithFfmpeg;
+		if (convertWithFfmpeg)
 		{
-			if (convertToMp3FFMPEGBitrateArgument != null)
+			if (convertWithFfmpegArguments != null)
 			{
-				String[] splitStr = convertToMp3FFMPEGBitrateArgument.trim().split("\\s+");
-				this.convertToMp3FFMPEGBitrateArguments = new ArrayList<String>();
+				String[] splitStr = convertWithFfmpegArguments.trim().split("\\s+");
+				this.convertWithFfmpegArguments = new ArrayList<String>();
 				for (int i = 0; i < splitStr.length; i++)
 				{
-					this.convertToMp3FFMPEGBitrateArguments.add(splitStr[i]);
+				    if (!splitStr[i].isBlank())
+				    {
+				        this.convertWithFfmpegArguments.add(splitStr[i]); 
+				    }
 				}
 			}
-			else
-			{
-				Debug.log("A new AudioOutputter was created with convertToMp3 set to true but with convertToMp3FFMPEGBitrateArgument set to null");
-			}
-			
 		}
+		this.convertWithFfmpegFileEnding = convertWithFfmpegFileEnding;
 		this.useCubaseNames = useCubaseNames;
 		this.fixedName = fixedName;
 	}
@@ -131,88 +141,87 @@ public class AudioOutputter extends Thread
 	{
 		Debug.log("Running AudioOutputter thread");
 		int successes = 0;
-		if (convertToMp3)
+		if (convertWithFfmpeg)
 		{
-			if (convertToMp3FFMPEGBitrateArguments != null && convertToMp3FFMPEGBitrateArguments.size() > 0)
+			
+			for (int i = 0; i < audioBites.size(); i++)
 			{
-				for (int i = 0; i < audioBites.size(); i++)
+				caller.audioOutputterProcessTextCallback("Extracting and converting file "+(i+1)+" out of "+audioBites.size());
+				AudioBite b = audioBites.get(i);
+				try
 				{
-					caller.audioOutputterProcessTextCallback("Extracting and converting file "+(i+1)+" out of "+audioBites.size());
-					AudioBite b = audioBites.get(i);
-					try
-					{
-						if (this.isInterrupted())
-						{
-							Debug.log("Thread interrupted. Exiting.");
-							return;
-						}
-						
-						ArrayList<String> soxCmdAndArgs = getSoxCommand(b,i);
-						
-						String tempFileName = soxCmdAndArgs.get(2);//The split file to be converted to mp3
-						
-						ProcessBuilder soxPB = new ProcessBuilder(soxCmdAndArgs);
-						
-						Process soxP = soxPB.start();
-						
-						caller.registerStartedProcess(soxP);
-						
-						int soxResult = soxP.waitFor();
-						
-						caller.unregisterStartedProcess(soxP);
-						
-						if (this.isInterrupted())
-						{
-							//Try to delete temp file
-							Utils.deleteFile(tempFileName);
-							Debug.log("Thread interrupted. Exiting.");
-							return;
-						}
-						
-						if (soxResult == 0)//Success running sox command
-						{
-							//Then convert to mp3
-							ArrayList<String> ffmpegCmdAndArgs = getFFMPEGCommand(tempFileName,b,i);
-							
-							ProcessBuilder ffmpegPB = new ProcessBuilder(ffmpegCmdAndArgs);
-							
-							Process ffmpegP = ffmpegPB.start();
-							
-							caller.registerStartedProcess(ffmpegP);
-							
-							int ffmpegResult = ffmpegP.waitFor();
-							
-							caller.unregisterStartedProcess(ffmpegP);
-							
-							if (ffmpegResult == 0)//Success running FFMPEG command
-							{
-								successes += 1;
-							}
-						}
-						
-						//Try to delete temp file
-						Utils.deleteFile(tempFileName);
-						
-					}
-					catch (InterruptedException e)
+					if (this.isInterrupted())
 					{
 						Debug.log("Thread interrupted. Exiting.");
 						return;
 					}
-					catch (Exception e)
+					
+					ArrayList<String> soxCmdAndArgs = getSoxCommand(b,i);
+					
+					String tempFileName = soxCmdAndArgs.get(2);//The split file to be converted
+					
+					ProcessBuilder soxPB = new ProcessBuilder(soxCmdAndArgs);
+					
+					Process soxP = soxPB.start();
+					
+					caller.registerStartedProcess(soxP);
+					
+					int soxResult = soxP.waitFor();
+					
+					caller.unregisterStartedProcess(soxP);
+					
+					if (this.isInterrupted())
 					{
-						Debug.log("Exception caught while trying write audio file for AudioBite with name "+ b.getName() +":");
-						e.printStackTrace();
+						//Try to delete temp file
+						Utils.deleteFile(tempFileName);
+						Debug.log("Thread interrupted. Exiting.");
+						return;
 					}
-					caller.audioOutputterPercentageCallback((int)(((float)(i+1)/(float)audioBites.size())*100));
+					
+					if (soxResult == 0)//Success running sox command
+					{
+						//Then convert with ffmpeg
+						ArrayList<String> ffmpegCmdAndArgs = getFFMPEGCommand(tempFileName,b,i);
+						
+						ProcessBuilder ffmpegPB = new ProcessBuilder(ffmpegCmdAndArgs);
+						
+						Process ffmpegP = ffmpegPB.start();
+						
+						caller.registerStartedProcess(ffmpegP);
+						
+						int ffmpegResult = ffmpegP.waitFor();
+						
+						caller.unregisterStartedProcess(ffmpegP);
+						
+						if (ffmpegResult == 0)//Success running FFMPEG command
+						{
+							successes += 1;
+						}
+						else
+						{
+						    ffmpegError = true;
+						}
+					}
+					
+					//Try to delete temp file
+					Utils.deleteFile(tempFileName);
+					
 				}
+				catch (InterruptedException e)
+				{
+					Debug.log("Thread interrupted. Exiting.");
+					return;
+				}
+				catch (Exception e)
+				{
+					Debug.log("Exception caught while trying write audio file for AudioBite with name "+ b.getName() +":");
+					e.printStackTrace();
+				}
+				caller.audioOutputterPercentageCallback((int)(((float)(i+1)/(float)audioBites.size())*100));
 			}
-			else
-			{
-				Debug.log("AudioOutputter tried to run thread with mp3 conversion but convertToMp3FFMPEGBitrateArguments is null or of zero length");
-			}
+			
 		}
-		else //Don't convert to mp3, just split
+		else //Don't convert, just split
 		{
 			for (int i = 0; i < audioBites.size(); i++)
 			{
@@ -264,11 +273,17 @@ public class AudioOutputter extends Thread
 		{
 			caller.audioOutputterProcessTextCallback("Finished with error(s)");
 		}
+		
+		if (ffmpegError)
+		{
+		    caller.sendMessageToUser(UserMessageType.ERROR, "Error(s) occurred while converting with FFmpeg. Check arguments and filename extension");
+		}
+		
 		caller.audioOutputterDoneCallback(successes, audioBites.size(),this);
 	}
 	
 	/**
-	 * Get the command to be sent to FFMPEG for mp3 conversion of each AudioBite
+	 * Get the command to be sent to FFMPEG for conversion of each AudioBite
 	 * @param inputFileName the temp file generated by SoX splitting
 	 * @param b current AudioBite to be extracted
 	 * @param index used for naming when ! useCubaseNames
@@ -284,11 +299,10 @@ public class AudioOutputter extends Thread
 		
 		cmdAndArgs.add(inputFileName);
 		
-		cmdAndArgs.addAll(convertToMp3FFMPEGBitrateArguments);
-		
-		cmdAndArgs.add("-compression_level");//The quality of 'lame' conversion algorithm (0-9, where 0 is best but slowest)
-		//See http://lame.cvs.sourceforge.net/viewvc/lame/lame/USAGE and http://ffmpeg.org/ffmpeg-codecs.html#libmp3lame-1
-		cmdAndArgs.add("2");//Default is 3 so this should be 1 better :-)
+		if ((convertWithFfmpegArguments != null) && (convertWithFfmpegArguments.size() > 0))
+		{
+		    cmdAndArgs.addAll(convertWithFfmpegArguments);
+		}
 		
 		cmdAndArgs.add("-y");
 		
@@ -297,7 +311,12 @@ public class AudioOutputter extends Thread
 		{
 			name = fixedName+"_"+String.format("%04d", index+1);
 		}
-		cmdAndArgs.add(outputFolder+"/"+name+".mp3");
+		cmdAndArgs.add(outputFolder+"/"+name+"."+this.convertWithFfmpegFileEnding);
+		
+		/*for (int i = 0; i < cmdAndArgs.size(); i++)
+		{
+		    Debug.log(cmdAndArgs.get(i));
+		}*/
 		
 		return cmdAndArgs;
 	}
@@ -317,7 +336,7 @@ public class AudioOutputter extends Thread
 		
 		cmdAndArgs.add(inputFile.getFilename());
 		
-		if (convertToMp3)
+		if (convertWithFfmpeg)
 		{
 			try 
 			{
@@ -341,8 +360,8 @@ public class AudioOutputter extends Thread
 		}
 		
 		cmdAndArgs.add("trim");
-		cmdAndArgs.add(String.format(Locale.US,"%.8f",b.getStart()));//start
-		cmdAndArgs.add(String.format(Locale.US,"%.8f",(b.getFunctionalEnd()-b.getStart())));//length
+		cmdAndArgs.add(String.format(Locale.US,"%.8f",b.getStartSec()));//start
+		cmdAndArgs.add(String.format(Locale.US,"%.8f",(b.getFunctionalEndSec()-b.getStartSec())));//length
 			
 		return cmdAndArgs;
 	}

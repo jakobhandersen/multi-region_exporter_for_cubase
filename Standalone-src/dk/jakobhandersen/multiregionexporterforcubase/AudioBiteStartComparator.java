@@ -31,7 +31,7 @@ public class AudioBiteStartComparator implements Comparator<AudioBite>
 	@Override
 	public int compare(AudioBite arg0, AudioBite arg1) 
 	{
-		return Double.compare(arg0.getStart(),arg1.getStart());
+		return Double.compare(arg0.getStartSec(),arg1.getStartSec());
 	}
 
 }

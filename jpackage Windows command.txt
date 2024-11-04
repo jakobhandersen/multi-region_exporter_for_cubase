@@ -1,0 +1,14 @@
+"C:\Program Files\Java\jdk-14.0.2\bin\jpackage" ^ 
+--input "C:\Users\jakob\Dropbox\App- og spilprojekter\MultiRegionExporterForCubase\v_2_0\BuildAssembly\Windows" ^
+--name "Multi-region Exporter - for Cubase" ^
+--main-jar MrEfC.jar ^
+--type msi ^
+--java-options "--enable-preview" ^
+--app-version 2.0 ^
+--vendor "Jakob Hougaard Andersen" ^
+--icon "C:\Users\jakob\Dropbox\App- og spilprojekter\MultiRegionExporterForCubase\v_2_0\Source\Logo\Logo.ico" ^
+--license-file "C:\Users\jakob\Dropbox\App- og spilprojekter\MultiRegionExporterForCubase\v_2_0\Source\License.txt" ^
+--win-dir-chooser ^
+--win-menu ^
+--win-menu-group "Multi-region Exporter - for Cubase" ^
+--dest C:\Users\jakob\Desktop\

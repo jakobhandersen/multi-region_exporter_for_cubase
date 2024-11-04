@@ -107,32 +107,32 @@ public class AboutDialog extends Dialog
 		btnOk.setBounds(373, 529, 108, 32);
 		btnOk.setText("OK");
 		
-		Label lblNewLabel = new Label(shlAboutMultiregionExporter, SWT.WRAP);
-		lblNewLabel.setFont(SWTResourceManager.getFont("Arial", 10, SWT.NORMAL));
-		if (! MultiRegionExporterForCubase.isMac)
-		{
-			lblNewLabel.setFont(SWTResourceManager.getFont("Arial", 8, SWT.NORMAL));
-		}
-		lblNewLabel.setBounds(111, 44, 370, 479);
+		Label lblLongText = new Label(shlAboutMultiregionExporter, SWT.WRAP);
+		lblLongText.setFont(SWTResourceManager.getFont("Arial", 11, SWT.NORMAL));
 		String osString;
+		lblLongText.setBounds(111, 55, 370, 479);
 		if (MultiRegionExporterForCubase.isMac)
 		{
-			osString = "OS X";
+		    osString = "Mac OS X";
 		}
 		else
-		{
-			osString = "Windows";
-		}
-		lblNewLabel.setText("Version "+Constants.versionString+" for "+osString+"\r\nBuilt on "+Constants.buildDateString+"\r\nBy Jakob Hougaard Andersen\r\n\r\nThe Multi-region Exporter is licensed under the GNU General Public License (GPL) version 3 (http://www.gnu.org/licenses/gpl-3.0.html).\r\n\r\nThe audio splitting is done by SoX - Sound eXchange (http://sox.sourceforge.net/) which is distributed in binary form with The Multi-region Exporter - for Cubase. SoX itself is licenced under the GNU General Public License version 2.\r\nA big thanks to SoX for creating and sharing their tool.\r\n\r\nThe generation of audio waveform and the optional conversion to mp3 is done by FFMPEG (https://www.ffmpeg.org/) which is distributed with the program in binary form. FFMPEG is itself licensed under the GNU Lesser General Public License (LGPL) version 2.1 or later (read more here: https://www.ffmpeg.org/legal.html).\r\nA big thanks to FFMPEG for creating and sharing their tool.\r\n\r\nFFMPEG in turn uses the LAME mp3 encoder for mp3 conversion which is also open source and also licenced under LGPL. Read more on the LAME website: http://lame.sourceforge.net\r\nAlso a big thanks LAME for creating and sharing their tool.\r\n\r\nThe Multi-region Exporter is also distributed with its 'own' copy of the Java Runtime Environment (JRE). The included JRE has its own licence agreement, which can be found on Oracle's JRE download website (http://www.oracle.com/technetwork/java/javase/downloads/index.html).\r\n\r\nIt must be mentioned that Cubase and Steinberg have nothing to do with the development of this tool and therefore they are in no way responsible for it, its functionality / lack of functionality or for supporting it.");
+        {
+		    lblLongText.setFont(SWTResourceManager.getFont("Arial", 9, SWT.NORMAL));
+            osString = "Windows";
+            lblLongText.setBounds(111, 75, 370, 479);
+        }
 		
-		Label label = new Label(shlAboutMultiregionExporter, SWT.NONE);
-		label.setImage(SWTResourceManager.getImage(AboutDialog.class, "/Assets/Logo85.png"));
-		label.setBounds(12, 17, 85, 91);
+		
+		lblLongText.setText("Version "+Constants.versionString+" for "+osString+"\r\nBuilt on "+Constants.buildDateString+"\r\nBy Jakob Hougaard Andersen\r\n\r\nThe Multi-region Exporter is licensed under the GNU General Public License (GPL) version 3 (http://www.gnu.org/licenses/gpl-3.0.html).\r\n\r\nThe audio splitting is done by SoX - Sound eXchange (http://sox.sourceforge.net/) which is distributed in binary form with The Multi-region Exporter - for Cubase. SoX itself is licenced under the GNU General Public License version 2.\r\nA big thanks to SoX for creating and sharing their tool.\r\n\r\nThe generation of audio waveform and the optional conversion to mp3 is done by FFMPEG (https://www.ffmpeg.org/) which is distributed with the program in binary form. FFMPEG is itself licensed under the GNU Lesser General Public License (LGPL) version 2.1 or later (read more here: https://www.ffmpeg.org/legal.html).\r\nA big thanks to FFMPEG for creating and sharing their tool.\r\n\r\nThe Multi-region Exporter is also distributed with its 'own' copy of the Java Runtime Environment (JRE). The included JRE is from OpenJDK and it has its own licence agreement, which can be found here: https://openjdk.java.net/legal/\r\n\r\nIt must be mentioned that Cubase and Steinberg have nothing to do with the development of this tool and therefore they are in no way responsible for it, its functionality / lack of functionality or for supporting it.");
+		
+		Label lblLogo = new Label(shlAboutMultiregionExporter, SWT.NONE);
+		lblLogo.setImage(SWTResourceManager.getImage(AboutDialog.class, "/Assets/Logo85.png"));
+		lblLogo.setBounds(12, 17, 85, 91);
 		
 		Label lblAboutMultiregionExporter = new Label(shlAboutMultiregionExporter, SWT.NONE);
 		lblAboutMultiregionExporter.setFont(SWTResourceManager.getFont("Arial", 12, SWT.NORMAL));
-		lblAboutMultiregionExporter.setBounds(111, 20, 281, 26);
-		lblAboutMultiregionExporter.setText("About Multi-region Exporter - for Cubase\n");
+		lblAboutMultiregionExporter.setBounds(111, 30, 290, 26);
+		lblAboutMultiregionExporter.setText("About Multi-region Exporter - for Cubase\r\n");
 
 	}
 }

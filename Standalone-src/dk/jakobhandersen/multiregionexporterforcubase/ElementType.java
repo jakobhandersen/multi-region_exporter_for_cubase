@@ -20,4 +20,4 @@ package dk.jakobhandersen.multiregionexporterforcubase;
  * @author Jakob Hougaard Andersen
  *
  */
-public  enum ElementType{None,MAudioEvent,PAudioClip,MAudioPartEvent,MAudioPart,MRangeMarkerEvent,PArrangeSetup,MAudioTrackEvent,MMarkerTrackEvent};
+public  enum ElementType{None,MAudioEvent,PAudioClip,MAudioPartEvent,MAudioPart,MRangeMarkerEvent,MMidiPartEvent,PArrangeSetup,MTempoEvent,MAudioTrackEvent,MMarkerTrackEvent,MMidiTrackEvent,MInstrumentTrackEvent};

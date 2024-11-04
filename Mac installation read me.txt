@@ -1,0 +1,20 @@
+- To install, first mount the DMG file, and drag the app into applications.
+
+Now, because I am not a registered Apple developer, the app is not 'signed' and 'notarized'. That means that mac OS X will say that the app is damaged when trying to open it. This is because mac OS X has put the downloaded app into quarantine using the so-called extended attribute com.apple.quarantine. So in order to allow it to run anyway, we need to remove that attribute using mac's Terminal (I'm sorry) as follows:
+
+- Open the mac Terminal (you can just search for it with Spotlight).
+
+- Type / paste the following command where <path to app> should be replaced by the path to the app (you can just drag the app onto the terminal and it will paste in the path) and commit by pressing enter:
+
+	sudo xattr -r -d com.apple.quarantine <path to app>
+
+- It will now ask for your password (the one normally used for installing stuff) so just type that in followed by enter. Now you can close Terminal again.
+
+- The first time you open the app, do it by right-clicking on it and choosing ‘Open’ and then choose ‘Open’ again in the following pop-up menu (again saying that the app is damaged).
+
+- That’s it! After this first time opening, you should be able to open it normally.
+
+
+
+To uninstall, just delete the app again from ‘applications’ folder.
+

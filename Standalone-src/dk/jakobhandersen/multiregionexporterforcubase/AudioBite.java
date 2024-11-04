@@ -22,31 +22,43 @@ package dk.jakobhandersen.multiregionexporterforcubase;
 public class AudioBite
 {
 	/**
-	 * Start time in seconds
+	 * Start time value.
+	 * Note that the value can be described in different time formats (TimeFormat) defined in startValueFormat.
 	 */
-	private double start;
+	private double startValue;
 	
 	/**
-	 * Length of the AudioBite.
-	 * Note that the length can be described in different time formats (TimeFormat) defined in lengthFormat.
+	 * The time format of the startValue variable
 	 */
-	private double length;
+	private TimeFormat startValueFormat = TimeFormat.NONE;
 	
 	/**
-	 * The time format of the length variable
+	 * Length value.
+	 * Note that the value can be described in different time formats (TimeFormat) defined in lengthValueFormat.
 	 */
-	private TimeFormat lengthFormat = TimeFormat.NONE;
+	private double lengthValue;
 	
 	/**
-	 * End time in seconds. Calculated from start and length.
+	 * The time format of the lengthValue variable
 	 */
-	private double end;
+	private TimeFormat lengthValueFormat = TimeFormat.NONE;
+	
 	
 	/**
-	 * The actually used value for end when creating audio files and range markers.
+	 * Start time in seconds. Calculated from startValue.
+	 */
+	private double startSec;
+	
+	/**
+	 * End time in seconds. Calculated from startValue and lengthValue.
+	 */
+	private double endSec;
+	
+	/**
+	 * The actually used value in seconds for end when creating audio files and range markers.
 	 * This value includes trailing time and is clamped to audio file length.
 	 */
-	private double functionalEnd;
+	private double functionalEndSec;
 	
 	/**
 	 * The name of the AudioBite. Will also be the filename (without file
@@ -62,14 +74,19 @@ public class AudioBite
 	private boolean nameSetNormally = false;
 	
 	/**
-	 * Has the start time been set?
+	 * Has the start value been set?
 	 */
-	private boolean startSet = false;
+	private boolean startValueSet = false;
 	
 	/**
-	 * Has the end time been calculated (from start and length) ?
+	 * Has the length value been set?
 	 */
-	private boolean endCalculated = false;
+	private boolean lengthValueSet = false;
+	
+	/**
+	 * Has the start and end time in seconds been calculated ?
+	 */
+	private boolean startAndEndSecCalculated = false;
 	
 	/**
 	 * Has functionalEnd been set?
@@ -80,50 +97,86 @@ public class AudioBite
 	
 	
 	/**
-	 * Calculates the end time of this AudioBite on the basis of start, length and lengthFormat
+	 * Calculates the start and end time of this AudioBite on the basis of startValue, startValueFormat, lengthValue and lengthValueFormat
 	 * @param sampleRate the sample rate of the Cubase project (defined in track XML)
 	 */
-	public void calculateEnd(double sampleRate)
+	public void calculateStartAndEndSec(double sampleRate, TempoSetting tempoSetting)
 	{
-		switch(lengthFormat)
+		if (startValueSet && lengthValueSet)
 		{
-		case SECONDS:
-			end = start + length;
-			endCalculated = true;
-			break;
+		    startAndEndSecCalculated = true;
+		    
+			//First calculate startSec
+		    switch(startValueFormat)
+	        {
+	        case SECONDS:
+	            this.startSec = this.startValue;
+	            break;
+	            
+	        case MIDI_TICKS:
+	            this.startSec = tempoSetting.midiTickPositionToSeconds(this.startValue);
+	            break;
+	            
+	        case SAMPLES:
+	            this.startSec = this.startValue /sampleRate;
+	            break;
+	            
+	        default:
+	            //Error. Somehow unknown format or NONE
+	            startAndEndSecCalculated = false;
+	            break;
+	        }
 			
-		case MIDI_TICKS:
-			end = start + (length/Constants.midiTicksPerSec);
-			endCalculated = true;
-			break;
+			//Then calculate endSec
+		    switch(lengthValueFormat)
+	        {
+	        case SECONDS:
+	            endSec = startSec + lengthValue;
+	            break;
+	            
+	        case MIDI_TICKS:
+	            //The current method only works if startValue is also in midi tics when lengthValue is
+	            if (this.startValueFormat == TimeFormat.MIDI_TICKS)
+	            {
+	                endSec = startSec + tempoSetting.midiTickLengthToSeconds(lengthValue, startValue);
+	            }
+	            else
+	            {
+	                Debug.log("Error: lenghtValue of AudioBite was defined in midi ticks but startValue was not");
+	                startAndEndSecCalculated = false;
+	            }
+	            break;
+	            
+	        case SAMPLES:
+	            endSec = startSec + (lengthValue/sampleRate);
+	            break;
+	            
+	        default:
+	            //Error. Somehow unknown format or NONE
+	            startAndEndSecCalculated = false;
+	            break;
+	        }
 			
-		case SAMPLES:
-			end = start + (length/sampleRate);
-			endCalculated = true;
-			break;
-			
-		default:
-			//Error. Somehow unknown format or NONE
-			break;
 		}
+		
 	}
 	
 	/**
 	 * @return end time in seconds
 	 */
-	public double getEnd()
+	public double getEndSec()
 	{
-		return end;
+		return endSec;
 	}
 	
 	
-	public double getFunctionalEnd()
+	public double getFunctionalEndSec()
 	{
 		if (! functionalEndSet)
 		{
 			Debug.log("Error! GetFunctionalEnd() called but functionalEnd is not set");
 		}
-		return functionalEnd;
+		return functionalEndSec;
 	}
 	
 	/**
@@ -138,9 +191,9 @@ public class AudioBite
 	/**
 	 * @return start time in seconds
 	 */
-	public double getStart()
+	public double getStartSec()
 	{
-		return start;
+		return startSec;
 	}
 	
 	/**
@@ -148,26 +201,27 @@ public class AudioBite
 	 */
 	public boolean isSetup()
 	{
-		return (startSet && endCalculated);
+		return (startAndEndSecCalculated);
 	}
 	
 	/**
-	 * @param endTime the functional end time (including trailing time and clamped to length of audio file).
+	 * @param endTime the functional end time in seconds (including trailing time and clamped to length of audio file).
 	 */
-	public void setFunctionalEnd(double endTime)
+	public void setFunctionalEndSec(double endTime)
 	{
 		functionalEndSet = true;
-		functionalEnd = endTime;
+		functionalEndSec = endTime;
 	}
 	
 	/**
 	 * @param length length value
 	 * @param format the TimeFormat of the specified length value
 	 */
-	public void setLength(double length, TimeFormat format)
+	public void setLengthValue(double length, TimeFormat format)
 	{
-		this.length = length;
-		lengthFormat = format;
+		this.lengthValue = length;
+		this.lengthValueFormat = format;
+		this.lengthValueSet = true;
 	}
 	
 	/**
@@ -177,7 +231,7 @@ public class AudioBite
 	public void setName(String name)
 	{
 		this.name = Utils.getValidFileNameString(name);
-		nameSetNormally = true;
+		this.nameSetNormally = true;
 		//Debug.Log("Name set: "+ name);
 	}
 	
@@ -194,12 +248,15 @@ public class AudioBite
 	}
 	
 	/**
-	 * @param start start time in seconds
+	 * @param startValue start time value
+	 * @param format the TimeFormat in which the start value is specified
 	 */
-	public void setStart(double start)
+	public void setStartValue(double startValue, TimeFormat format)
 	{
-		this.start = start;
-		startSet = true;
+		this.startValue = startValue;
+		this.startValueFormat = format;
+		this.startValueSet = true;
+		//Debug.log("Start value set to "+startValue+" in the format "+format.toString());
 	}
 	
 
@@ -207,7 +264,7 @@ public class AudioBite
 	@Override
 	public String toString()
 	{
-		return "AudioBite: name = " + name + ", start = "+start +", end = "+end+", functionalEnd = "+functionalEnd+", length = "+(functionalEnd-start);
+		return "AudioBite: name = " + name + ", startSec = "+startSec +", endSec = "+endSec+", functionalEndSec = "+functionalEndSec+", length = "+(functionalEndSec-startSec);
 	}
 	
 }

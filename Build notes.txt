@@ -1,19 +1,15 @@
 On Mac:
 - export runnable jar
-- make into .app by using jar2app (downloadable from here: https://github.com/Jorl17/jar2app). Build arguments are saved in "jar2app build.txt" (change paths to your computer)
-- copy folders "sox" and "ffmpeg" into the "Contents" folder
-	- "sox" should contain sox and soxi (for mac)
-	- "ffmpeg" should contain ffmpeg (for mac)
+- make sure that you have a folder called 'resources' in the same folder as the newly created jar file. This folder should contain 2 subfolders: 'sox' and 'ffmpeg'. The 'sox' folder should contain sox and soxi (for mac) and the 'ffmpeg' folder should contain ffmpeg (for mac).
+- make into dmg image using jpackage in Terminal. Example is saved in "jpackage mac command.txt" in Source folder  (change paths to your computer). Note that everything in the same folder as the jar file (including the 'resources' folder) will automatically be put into the 'app' subfolder by jpackage.
+- Note that when downloaded from the internet, mac OS X will put the app into quarantine (See extended attributes, com.apple.quarantine), and the user will have to remove it from quarantine using Terminal with: sudo xattr -r -d com.apple.quarantine <path to app>
+
 
 
 On Windows
 - export runnable jar
-- make into .exe by using Launch4j (remember to use private JRE)
-- copy folder "documentation" into same folder as .exe
-	- "documentation" should contain "documentation.pdf"
-- copy "resources" folder into same folder as .exe
-	- "resources" should contain folders "sox" and a jre folder specified in Launch4j
-		- "sox" should contain sox and soxi (for windows)
-		- "ffmpeg should contain ffmpeg (for windows)
-		- the jre folder should contain the private JRE (can be copied from "Java" folder in "program files")
+- make sure that you have a folder called 'resources' in the same folder as the newly created jar file. This folder should contain 2 subfolders: 'sox' and 'ffmpeg'. The 'sox' folder should contain sox and soxi (for Windows) and the 'ffmpeg' folder should contain ffmpeg (for Windows).
+- make installation file using jpackage in Command Prompt. Example is saved in "jpackage Windows command.txt" in Source folder  (change paths to your computer). Note that everything in the same folder as the jar file (including the 'resources' folder) will automatically be put into the 'app' subfolder by jpackage.
+
+
  

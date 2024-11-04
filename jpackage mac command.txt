@@ -1,0 +1,12 @@
+/Library/Java/JavaVirtualMachines/jdk-14.0.2.jdk/Contents/Home/bin/jpackage \
+  --input "/Users/jakob/Dropbox/App- og spilprojekter/MultiRegionExporterForCubase/v_2_0/BuildAssembly/Mac/" \
+  --name "Multi-region Exporter - for Cubase" \
+  --main-jar MrEfC.jar \
+  --java-options '--enable-preview -XstartOnFirstThread' \
+  --app-version 2.0 \
+  --vendor "Jakob Hougaard Andersen" \
+  --mac-package-identifier 'dk.jakobhandersen.multiregionexporterforcubase' \
+  --icon "/Users/jakob/Dropbox/App- og spilprojekter/MultiRegionExporterForCubase/v_2_0/Source/Logo/MyIcon.icns" \
+  --type dmg \
+  --license-file "/Users/jakob/Dropbox/App- og spilprojekter/MultiRegionExporterForCubase/v_2_0/Source/License.txt" \
+  --dest "/Users/jakob/Desktop"

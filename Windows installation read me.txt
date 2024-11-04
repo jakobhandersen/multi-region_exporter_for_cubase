@@ -1,0 +1,10 @@
+To install, just run the "Multi-region Exporter - for Cubase-2.0.msi" installer.
+
+Note that when running the msi installer, Windows will probably say:
+
+"Windows protected your PC
+Microsoft Defender SmartScreen prevented an unrecognised app from starting. Running this app might put your PC at risk."
+
+To install anyway, just click "More info" and then "Run anyway"
+
+You can uninstall again just like uninstalling any other application.

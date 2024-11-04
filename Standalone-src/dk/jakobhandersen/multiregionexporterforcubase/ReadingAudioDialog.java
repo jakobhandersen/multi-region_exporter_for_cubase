@@ -112,7 +112,7 @@ public class ReadingAudioDialog extends Dialog
 		lblExpor.setFont(SWTResourceManager.getFont("Arial", 18, SWT.NORMAL));
 		lblExpor.setAlignment(SWT.CENTER);
 		lblExpor.setBounds(0, 66, 450, 35);
-		lblExpor.setText("outputting files");
+		lblExpor.setText("reading audio file");
 		shell.setCursor(new Cursor(display, SWT.CURSOR_WAIT));
 
 	}
